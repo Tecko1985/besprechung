@@ -14,6 +14,15 @@ const speaking = new Set(); // Identities, die gerade sprechen
 let stageTrack = null;    // aktuell auf der Bühne gezeigter ScreenShare-Track
 let stageSid = null;      // dessen trackSid (Doppel-Attach vermeiden)
 let stageWatchdog = null; // siehe startStageWatchdog() -- Selbstheilung bei unsauber beendetem Screenshare
+// Aufnahme (lokal im Browser via MediaRecorder — kein Server/Egress)
+let recorder = null;       // MediaRecorder oder null
+let recChunks = [];
+let recMimeType = "";
+let recAudioCtx = null;    // AudioContext zum Mischen aller Stimmen
+let recDest = null;        // MediaStreamAudioDestinationNode (Ergebnis des Mix)
+let recSources = new Map(); // key -> MediaStreamAudioSourceNode (Dedupe/Cleanup)
+let remoteRecordingBy = null; // Anzeigename, falls ein ANDERER gerade aufnimmt
+let remoteRecordingId = null; // dessen identity (Banner sauber entfernen bei Disconnect)
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -34,6 +43,9 @@ const btnAudioUnlock = $("btn-audio-unlock");
 const joinMutedCb = $("join-muted");
 const roomCount = $("room-count");
 const saveStatus = $("save-status");
+const btnRecord = $("btn-record");
+const recBanner = $("rec-banner");
+const recBannerText = $("rec-banner-text");
 
 const screenSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
 
@@ -84,6 +96,7 @@ function setupStaticButtons() {
   btnMic.addEventListener("click", toggleMic);
   btnScreen.addEventListener("click", toggleScreen);
   btnLeave.addEventListener("click", leaveRoom);
+  btnRecord.addEventListener("click", toggleRecording);
   btnAudioUnlock.addEventListener("click", unlockAudio);
   window.addEventListener("beforeunload", () => { if (room) { try { room.disconnect(); } catch (_) {} } });
 }
@@ -166,6 +179,9 @@ async function joinRoom() {
 }
 
 async function leaveRoom() {
+  // Läuft eine Aufnahme, sauber stoppen (informiert die anderen + lädt die
+  // Datei runter), bevor die Verbindung getrennt wird.
+  if (recorder) stopRecording();
   if (room) { try { await room.disconnect(); } catch (_) {} }
   // UI-Reset passiert im Disconnected-Event (onLeft).
 }
@@ -176,11 +192,18 @@ function enterRoomUI() {
   controls.classList.remove("hidden");
   updateControls();
   updateAudioUnlock();
+  updateRecordingUI();
   renderParticipants();
   renderStage();
 }
 
 function onLeft() {
+  // Lief noch eine Aufnahme (z.B. Verbindung hart abgerissen), sichern:
+  // recorder.stop() -> onstop lädt die bisherige Aufnahme runter + räumt den Mix auf.
+  if (recorder && recorder.state !== "inactive") { try { recorder.stop(); } catch (_) {} }
+  recorder = null;
+  remoteRecordingBy = null;
+  remoteRecordingId = null;
   room = null;
   speaking.clear();
   clearStage();
@@ -189,6 +212,7 @@ function onLeft() {
   lobby.classList.remove("hidden");
   roomView.classList.add("hidden");
   controls.classList.add("hidden");
+  updateRecordingUI();
 }
 
 // ------------------------------------------------------------------
@@ -196,8 +220,9 @@ function onLeft() {
 // ------------------------------------------------------------------
 function wireRoomEvents(r) {
   const E = LK.RoomEvent;
-  r.on(E.ParticipantConnected, renderParticipants)
-   .on(E.ParticipantDisconnected, renderParticipants)
+  r.on(E.ParticipantConnected, onParticipantConnected)
+   .on(E.ParticipantDisconnected, onParticipantDisconnected)
+   .on(E.DataReceived, onDataReceived)
    .on(E.TrackSubscribed, onTrackSubscribed)
    .on(E.TrackUnsubscribed, onTrackUnsubscribed)
    .on(E.LocalTrackPublished, () => { renderStage(); renderParticipants(); updateControls(); })
@@ -474,6 +499,165 @@ function updateAudioUnlock() {
 async function unlockAudio() {
   if (room) { try { await room.startAudio(); } catch (_) {} }
   updateAudioUnlock();
+}
+
+// ------------------------------------------------------------------
+// Aufnahme — lokal im Browser (MediaRecorder), rein clientseitig: kein
+// Server, kein LiveKit-Egress. Mischt alle Stimmen (Web Audio) und nimmt,
+// falls beim Start jemand teilt, den geteilten Bildschirm mit auf. Nur für
+// Bearbeiter (isModerator). Alle im Raum werden per Data-Message sichtbar
+// informiert, dass aufgenommen wird (Transparenz/Einwilligung).
+// ------------------------------------------------------------------
+const recordingSupported = typeof window.MediaRecorder !== "undefined" &&
+  !!(window.AudioContext || window.webkitAudioContext);
+
+function pickRecMime(hasVideo) {
+  const cands = hasVideo
+    ? ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
+    : ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+  for (const c of cands) { try { if (MediaRecorder.isTypeSupported(c)) return c; } catch (_) {} }
+  return "";
+}
+
+async function toggleRecording() {
+  if (recorder) stopRecording();
+  else await startRecording();
+}
+
+async function startRecording() {
+  if (!room || recorder || !recordingSupported) return;
+  if (!confirm("Alle Teilnehmer werden sichtbar darüber informiert, dass aufgenommen wird. Die Aufnahme wird auf deinem Gerät gespeichert. Jetzt starten?")) return;
+  try {
+    recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    recDest = recAudioCtx.createMediaStreamDestination();
+    recSources = new Map();
+    if (recAudioCtx.state === "suspended") { try { await recAudioCtx.resume(); } catch (_) {} }
+    participants().forEach(addParticipantAudioToMix);
+
+    const videoTrack = currentScreenShareVideoTrack();
+    const mimeType = pickRecMime(!!videoTrack);
+    if (!mimeType) { flashStatus("Aufnahme-Format wird von diesem Browser nicht unterstützt.", "is-error"); stopAudioMix(); return; }
+    const tracks = recDest.stream.getAudioTracks().slice();
+    if (videoTrack) tracks.push(videoTrack);
+
+    recChunks = [];
+    recMimeType = mimeType;
+    recorder = new MediaRecorder(new MediaStream(tracks), { mimeType });
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+    recorder.onstop = finishRecordingDownload;
+    recorder.start(1000);
+    broadcastRecording(true);
+    updateRecordingUI();
+    flashStatus(videoTrack ? "Aufnahme gestartet (Ton + Bildschirm)." : "Aufnahme gestartet (Ton).", "is-ok");
+  } catch (e) {
+    flashStatus("Aufnahme konnte nicht gestartet werden" + (e && e.message ? ": " + e.message : ""), "is-error");
+    stopAudioMix();
+    recorder = null;
+    updateRecordingUI();
+  }
+}
+
+function stopRecording() {
+  if (recorder && recorder.state !== "inactive") { try { recorder.stop(); } catch (_) {} } // onstop -> Download
+  recorder = null;
+  broadcastRecording(false);
+  updateRecordingUI();
+  flashStatus("Aufnahme beendet — Datei wird heruntergeladen.", "is-ok");
+}
+
+function finishRecordingDownload() {
+  const chunks = recChunks; recChunks = [];
+  stopAudioMix();
+  if (!chunks.length) return;
+  const blob = new Blob(chunks, { type: recMimeType || "application/octet-stream" });
+  const ext = recMimeType.indexOf("mp4") >= 0 ? "mp4" : recMimeType.indexOf("ogg") >= 0 ? "ogg" : "webm";
+  const stamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "Besprechung_" + stamp + "." + ext;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => { try { URL.revokeObjectURL(a.href); } catch (_) {} }, 15000);
+}
+
+function addTrackToMix(mst, key) {
+  if (!recAudioCtx || !mst || recSources.has(key)) return;
+  try {
+    const src = recAudioCtx.createMediaStreamSource(new MediaStream([mst]));
+    src.connect(recDest);
+    recSources.set(key, src);
+  } catch (_) {}
+}
+
+function addParticipantAudioToMix(p) {
+  const mic = p.getTrackPublication(LK.Track.Source.Microphone);
+  if (mic && mic.track && mic.track.mediaStreamTrack) addTrackToMix(mic.track.mediaStreamTrack, "mic:" + p.identity);
+  const sha = p.getTrackPublication(LK.Track.Source.ScreenShareAudio);
+  if (sha && sha.track && sha.track.mediaStreamTrack) addTrackToMix(sha.track.mediaStreamTrack, "sha:" + p.identity);
+}
+
+function currentScreenShareVideoTrack() {
+  const share = findScreenShare();
+  const mst = share && share.track && share.track.mediaStreamTrack;
+  return mst && mst.readyState === "live" ? mst : null;
+}
+
+function stopAudioMix() {
+  if (recSources) { recSources.forEach((s) => { try { s.disconnect(); } catch (_) {} }); recSources = new Map(); }
+  if (recAudioCtx) { try { recAudioCtx.close(); } catch (_) {} recAudioCtx = null; }
+  recDest = null;
+}
+
+// Data-Message an alle: "ich nehme (nicht mehr) auf" — treibt das Banner bei
+// den anderen. Braucht canPublishData (im Token gesetzt).
+function broadcastRecording(active) {
+  if (!room) return;
+  try {
+    const data = new TextEncoder().encode(JSON.stringify({ t: "rec", active: !!active, by: displayName(me) }));
+    room.localParticipant.publishData(data, { reliable: true });
+  } catch (_) {}
+}
+
+function onDataReceived(payload, participant) {
+  try {
+    const msg = JSON.parse(new TextDecoder().decode(payload));
+    if (msg && msg.t === "rec") {
+      remoteRecordingBy = msg.active ? (msg.by || "Jemand") : null;
+      remoteRecordingId = msg.active && participant ? participant.identity : null;
+      updateRecordingUI();
+    }
+  } catch (_) {}
+}
+
+function onParticipantConnected() {
+  renderParticipants();
+  if (recorder) broadcastRecording(true); // neu Hinzugekommene über die laufende Aufnahme informieren
+}
+
+function onParticipantDisconnected(p) {
+  // Verlässt der Aufnehmende hart (ohne "stop"-Nachricht), Banner trotzdem entfernen.
+  if (p && remoteRecordingId && p.identity === remoteRecordingId) {
+    remoteRecordingBy = null;
+    remoteRecordingId = null;
+  }
+  renderParticipants();
+  updateRecordingUI();
+}
+
+function updateRecordingUI() {
+  const amRecording = !!recorder;
+  btnRecord.classList.toggle("hidden", !(isModerator && recordingSupported));
+  btnRecord.classList.toggle("recording", amRecording);
+  $("rec-icon").textContent = amRecording ? "⏹" : "⏺";
+  $("rec-label").textContent = amRecording ? "Stoppen" : "Aufnehmen";
+  const activeBy = amRecording ? "dir" : remoteRecordingBy;
+  if (activeBy) {
+    recBannerText.textContent = "Aufnahme läuft" + (activeBy === "dir" ? "" : " (durch " + activeBy + ")");
+    recBanner.classList.remove("hidden");
+  } else {
+    recBanner.classList.add("hidden");
+  }
 }
 
 // ------------------------------------------------------------------

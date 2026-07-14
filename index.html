@@ -57,6 +57,9 @@
 
       <!-- ---------- Im Raum ---------- -->
       <section id="room" class="hidden">
+        <div class="rec-banner hidden" id="rec-banner">
+          <span class="rec-dot">●</span> <span id="rec-banner-text">Aufnahme läuft</span>
+        </div>
         <div class="stage hidden" id="stage">
           <div class="stage-label" id="stage-label"></div>
           <!-- geteiltes Bildschirm-Video wird hier eingehängt -->
@@ -79,6 +82,10 @@
       <button class="ctrl-btn" id="btn-screen" type="button">
         <span class="ctrl-icon">🖥️</span>
         <span class="ctrl-label" id="screen-label">Bildschirm teilen</span>
+      </button>
+      <button class="ctrl-btn hidden" id="btn-record" type="button">
+        <span class="ctrl-icon" id="rec-icon">⏺</span>
+        <span class="ctrl-label" id="rec-label">Aufnehmen</span>
       </button>
       <button class="ctrl-btn danger" id="btn-leave" type="button">
         <span class="ctrl-icon">🚪</span>
@@ -104,8 +111,8 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
-  <script src="config.js?v=1.2"></script>
+  <script src="config.js?v=1.3"></script>
   <script src="db.js?v=1.2"></script>
-  <script src="app.js?v=1.2"></script>
+  <script src="app.js?v=1.3"></script>
 </body>
 </html>

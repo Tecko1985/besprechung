@@ -220,6 +220,18 @@ button.btn:disabled { opacity: 0.55; cursor: default; }
 .ctrl-btn.is-muted { background: var(--red-light); border-color: #f0c4bd; color: var(--red); }
 .ctrl-btn.danger { background: var(--white); border-color: #f0c4bd; color: var(--red); }
 .ctrl-btn.danger:hover { background: var(--red-light); }
+.ctrl-btn.recording { background: var(--red); border-color: var(--red); color: white; animation: recpulse 1.4s ease-in-out infinite; }
+@keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.72; } }
+
+/* ---------- Aufnahme-Banner (bei allen sichtbar) ---------- */
+.rec-banner {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--red); color: white;
+  font-size: 14px; font-weight: 700;
+  padding: 8px 14px; border-radius: 10px; margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.rec-banner .rec-dot { animation: recpulse 1.2s ease-in-out infinite; font-size: 12px; }
 
 /* ---------- Version-Badge / Modal / Changelog ---------- */
 .version-badge {
