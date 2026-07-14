@@ -1,13 +1,13 @@
 // Zugang über das zentrale ToolsUebersicht-Login-Gateway — gleiches Muster wie
 // die anderen Gateway-Apps (Vorbild E:\abwesenheitskalender\db.js), aber
-// ZUSTANDSLOS: der Trainerraum speichert nichts in Nextcloud (kein
+// ZUSTANDSLOS: die Besprechung speichert nichts in Nextcloud (kein
 // dav-load/dav-save). Die einzige Server-Aufgabe ist, dem eingeloggten &
 // berechtigten Trainer ein kurzlebiges LiveKit-Zugangstoken auszustellen
 // (Aktion "livekit-token" im admin-worker.js). Der LiveKit-API-Secret bleibt
 // dabei serverseitig — der Client bekommt nur das fertige, signierte Token.
 const GATEWAY_URL = "https://landingpage.michel-brunner.workers.dev";
 const TOKEN_STORAGE_KEY = "tu_session_token";
-const GATEWAY_APP_ID = "trainerraum";
+const GATEWAY_APP_ID = "besprechung";
 
 class NotLoggedInError extends Error {
   constructor(message) {
@@ -29,7 +29,7 @@ async function gatewayRequest(payload) {
     body: JSON.stringify(payload)
   });
   if (resp.status === 401) throw new NotLoggedInError("Sitzung abgelaufen");
-  if (resp.status === 403) throw new Error("Kein Zugriff auf diesen Trainerraum.");
+  if (resp.status === 403) throw new Error("Kein Zugriff auf diese Besprechung.");
   if (!resp.ok) {
     let detail = "";
     try { const b = await resp.json(); if (b && b.error) detail = ": " + b.error; } catch (_) {}

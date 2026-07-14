@@ -1,10 +1,13 @@
-# Trainerraum
+# Besprechung
 
 Vanilla-JS-App (kein Build-Step), 20. Gateway-App der ToolsUebersicht-Familie.
 Sprach-/Screenshare-Treffpunkt für Trainer — direkter Anlass war der Wunsch nach einer
 Teams/Discord-artigen Funktion für die hybride Trainerversammlung (Start: 8 Personen,
 soll aber ohne Redesign auf eine größere Versammlung skalieren). Port 8788
-(`E:\.claude\launch.json`).
+(`E:\.claude\launch.json`). **Hieß bis kurz nach dem Launch „Trainerraum"** —
+umbenannt, bevor die App für irgendjemanden außer Admin sichtbar war (siehe
+Rename-Hinweis ganz unten); Ordner, Repo, App-Id und alle Referenzen sind
+durchgängig auf „Besprechung" aktualisiert.
 
 ## Architektur-Entscheidung: SFU statt Mesh
 
@@ -25,13 +28,13 @@ kostenloses LiveKit-Cloud-Projekt.
 
 ## Zustandslosigkeit
 
-Anders als jede andere Gateway-App speichert der Trainerraum **nichts** dauerhaft —
+Anders als jede andere Gateway-App speichert die Besprechung **nichts** dauerhaft —
 kein `dav-load`/`dav-save`, kein Nextcloud-Dokument, keine Chatverläufe, keine
-Aufzeichnung. Die einzige Server-Berührung ist die neue Worker-Aktion
-`livekit-token` (`admin-worker.js`, `handleLivekitToken`): eingeloggter, berechtigter
-Trainer rein → kurzlebiges (6h) LiveKit-JWT raus. Der Client (`db.js`,
-`fetchLivekitToken(room)`) verbindet sich damit direkt zu LiveKit Cloud — der Worker
-sieht danach keinen Medienstrom, nur den initialen Token-Request.
+Aufzeichnung. Die einzige Server-Berührung ist die Worker-Aktion `livekit-token`
+(`admin-worker.js`, `handleLivekitToken`): eingeloggter, berechtigter Trainer rein →
+kurzlebiges (6h) LiveKit-JWT raus. Der Client (`db.js`, `fetchLivekitToken(room)`)
+verbindet sich damit direkt zu LiveKit Cloud — der Worker sieht danach keinen
+Medienstrom, nur den initialen Token-Request.
 
 **LiveKit-Secrets sind bewusst NICHT Teil des globalen `requiredSecrets`-Arrays** in
 `admin-worker.js` (das würde bei fehlendem Secret die GESAMTE Gateway für alle ~20
@@ -53,7 +56,7 @@ den vorhandenen `bytesToBase64Url()`-Helper mitbenutzt. Identity = Gateway-Usern
 
 ## Rechte
 
-`userMayAccessTool("trainerraum", ...)` — identische Sichtbarkeitslogik wie jede
+`userMayAccessTool("besprechung", ...)` — identische Sichtbarkeitslogik wie jede
 andere App (Admin-Panel-Gruppen-Sichtbarkeit in `sichtbarkeit.json`). Kein
 gesondertes Bearbeiten-Konzept (`editGroupIds`) — im Raum sind alle gleichberechtigt,
 es gibt keine Rolle „Moderator", die z. B. andere stummschalten könnte (bewusst
@@ -61,17 +64,22 @@ schlanker Scope für den Start).
 
 ## Raum-Modell
 
-Nur EIN fester Raum (`config.js`: `ROOM_NAME = "trainerversammlung"`). Mehrere Kanäle
-ließen sich später ergänzen, indem die Lobby mehrere Räume anbietet und den Namen an
-`fetchLivekitToken(room)` durchreicht — die Server-Aktion nimmt den Raumnamen schon
-entgegen (validiert per Regex `^[a-zA-Z0-9_-]{1,100}$`, nicht hart auf den einen
-Namen verdrahtet), braucht für eine Erweiterung also keinen Worker-Redeploy.
+Nur EIN fester Raum (`config.js`: `ROOM_NAME = "besprechung"`, `ROOM_LABEL` steuert
+den in der Lobby angezeigten Titel — wird in `app.js`/`showAppShell()` dynamisch
+gesetzt, nicht im HTML hartkodiert). Mehrere Kanäle ließen sich später ergänzen,
+indem die Lobby mehrere Räume anbietet und den Namen an `fetchLivekitToken(room)`
+durchreicht — die Server-Aktion nimmt den Raumnamen schon entgegen (validiert per
+Regex `^[a-zA-Z0-9_-]{1,100}$`, nicht hart auf den einen Namen verdrahtet), braucht
+für eine Erweiterung also keinen Worker-Redeploy.
 
 ## Akzeptierte Limitierungen (nicht erneut melden/fixen)
 
 - **Kein Bildschirm-Teilen auf iOS-Safari** (`getDisplayMedia` fehlt dort
   systembedingt) — der Button ist dort clientseitig deaktiviert
   (`screenSupported`-Check in `app.js`). Mikro/Zuhören funktioniert überall.
+- **Bildschirm-Teilen vom Handy aus ist geräteabhängig unzuverlässig** (siehe
+  robustheits-Fix unten) — auf Android technisch möglich, aber nicht garantiert
+  stabil; praktische Empfehlung bleibt Laptop/Desktop für die teilende Person.
 - **Kein Moderator-/Mute-fremder-Teilnehmer-Recht** — jede:r verwaltet nur das eigene
   Mikro/den eigenen Screenshare.
 - **Kein Chat, keine Aufzeichnung, keine Warteraum-Funktion** — bewusst schlanker
@@ -80,16 +88,46 @@ Namen verdrahtet), braucht für eine Erweiterung also keinen Worker-Redeploy.
   reichlich; eine Sitzung, die länger als 6h ohne Neuladen der Seite läuft, würde neu
   verbinden müssen (kein bekannter Anwendungsfall bisher).
 
+## Robustheit: Screenshare-Selbstheilung (seit 1.1)
+
+Beim ersten echten Zwei-Personen-Test (ein Teilnehmer per Handy) blieb die Bühne bei
+den anderen auf einem eingefrorenen/schwarzen Bild stehen, obwohl die Freigabe längst
+beendet war — mobile Browser feuern beim Sperren des Displays/Wegwischen des Tabs oft
+kein sauberes LiveKit-Unpublish-Event. Fix in zwei Teilen (`app.js`):
+`attachNativeStopWatcher()` hört auf der teilenden Seite zusätzlich auf das native
+`ended`-Event des rohen `MediaStreamTrack` und erzwingt ein sauberes
+`setScreenShareEnabled(false)`; `startStageWatchdog()`/`isTrackAlive()` prüft auf der
+zuschauenden Seite alle 3s den `readyState` des gezeigten Tracks und räumt selbst auf,
+falls das Unpublish-Event trotzdem ausbleibt.
+
 ## Deploy / Registrierung
 
-- `E:\.claude\launch.json` — `trainerraum`, Port 8788.
-- `E:\ToolsUebersicht\config.js` — `TOOLS`-Eintrag (Icon 🎙️) + `APP_CHANGELOG` (1.14).
+- `E:\.claude\launch.json` — `besprechung`, Port 8788.
+- `E:\ToolsUebersicht\config.js` — `TOOLS`-Eintrag (Icon 🎙️, `id: "besprechung"`) +
+  `APP_CHANGELOG`.
 - `E:\ToolsUebersicht\admin-worker.js` — `ALLOWED_ORIGINS` `http://localhost:8788`,
-  neue Aktion `livekit-token` (`handleLivekitToken` + `buildLivekitToken`-Helper).
-  **Worker-Redeploy nötig** (Cloudflare Dashboard) — wie bei jeder Worker-Änderung.
-  Zusätzlich drei neue Worker-Secrets: `LIVEKIT_URL`, `LIVEKIT_API_KEY`,
-  `LIVEKIT_API_SECRET` (LiveKit-Cloud-Projekt, von Michel angelegt).
+  Aktion `livekit-token` (`handleLivekitToken` + `buildLivekitToken`-Helper), Check
+  `userMayAccessTool("besprechung", ...)`. **Worker-Redeploy nötig** (Cloudflare
+  Dashboard) — wie bei jeder Worker-Änderung. Drei Worker-Secrets:
+  `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (LiveKit-Cloud-Projekt, von
+  Michel angelegt) — **bereits gesetzt und deployed** (Stand 2026-07-14).
 - Sichtbarkeit (welche Gruppen dürfen das Tool sehen/nutzen) wird wie bei jeder
   anderen App nach dem Launch im Admin-Panel der Tools-Übersicht gesetzt — kein Code
   nötig. Bis dahin ist die App für Nicht-Admins unsichtbar (Standardverhalten von
-  `userMayAccessTool` bei fehlendem `sichtbarkeit.json`-Eintrag).
+  `userMayAccessTool` bei fehlendem `sichtbarkeit.json`-Eintrag). **Stand 2026-07-14:
+  noch nicht gesetzt** — nur Admin (Michel) kann testen, bis das im Admin-Panel
+  passiert.
+
+## Rename-Hinweis (2026-07-14)
+
+App hieß beim allerersten Launch (gleicher Tag) kurz „Trainerraum" mit Ordner
+`E:\trainerraum`, GitHub-Repo `Tecko1985/trainerraum`, App-Id `"trainerraum"` und
+Raumname `"trainerversammlung"`. Umbenannt auf Nutzerwunsch, BEVOR die App für
+irgendjemanden außer Admin sichtbar war (Sichtbarkeit stand zu dem Zeitpunkt noch
+nicht im Admin-Panel) — daher volle Umbenennung über alle Ebenen ohne Rücksicht auf
+bestehende Bookmarks/Links: Ordner, GitHub-Repo (`gh repo rename`, alte Pages-URL
+`tecko1985.github.io/trainerraum/` liefert seither 404, kein automatischer
+Redirect), App-Id (`GATEWAY_APP_ID`/`userMayAccessTool`-Aufruf/TOOLS-Eintrag),
+Raumname. Kein eigener Cloudflare-Worker (nutzt den gemeinsamen `landingpage`-Worker)
+und keine Nextcloud-Daten (zustandslos) — dadurch deutlich einfacher als ein
+typischer Fleet-Rename mit dediziertem Worker/Datenpfad.

@@ -1,5 +1,5 @@
 // ------------------------------------------------------------------
-// Trainerraum — LiveKit-Sprach-/Screenshare-Client.
+// Besprechung — LiveKit-Sprach-/Screenshare-Client.
 // Zustandslos: kein Nextcloud-Speicher. Ablauf = anmelden (Gateway) →
 // Token holen (db.js/fetchLivekitToken) → LiveKit-Room verbinden → reden
 // und optional Bildschirm teilen. Vorbild-Look: die übrigen Gateway-Apps.
@@ -68,6 +68,7 @@ function showAppShell() {
   connectScreen.style.display = "none";
   appShell.style.display = "";
   $("header-user").textContent = displayName(me);
+  $("lobby-title").textContent = ROOM_LABEL;
   lobby.classList.remove("hidden");
   roomView.classList.add("hidden");
   controls.classList.add("hidden");
