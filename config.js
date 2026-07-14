@@ -1,4 +1,4 @@
-const APP_VERSION = "1.3";
+const APP_VERSION = "1.4";
 
 // Fester Hauptraum. Die Besprechung kennt bewusst nur EINEN Raum. Mehrere
 // „Kanäle" ließen sich später ergänzen, indem man hier mehrere Räume anbietet
@@ -9,12 +9,12 @@ const ROOM_LABEL = "Besprechung";
 
 const APP_CHANGELOG = [
   {
-    version: "1.3",
+    version: "1.4",
     groups: [
       {
         title: "Aufnahme",
         items: [
-          "Bearbeiter-Gruppen können die Besprechung direkt im Browser aufnehmen (Ton aller Teilnehmer, plus geteilter Bildschirm falls beim Start aktiv). Die Datei wird am Ende auf dem eigenen Gerät gespeichert.",
+          "Bearbeiter-Gruppen können die Besprechung direkt im Browser aufnehmen — Ton aller Teilnehmer plus der geteilte Bildschirm (auch wenn erst während der laufenden Aufnahme mit dem Teilen begonnen wird). Die Datei wird am Ende auf dem eigenen Gerät gespeichert.",
           "Während einer Aufnahme sehen alle Teilnehmer einen deutlichen Hinweis „Aufnahme läuft“."
         ]
       }

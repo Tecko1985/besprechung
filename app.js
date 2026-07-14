@@ -23,6 +23,12 @@ let recDest = null;        // MediaStreamAudioDestinationNode (Ergebnis des Mix)
 let recSources = new Map(); // key -> MediaStreamAudioSourceNode (Dedupe/Cleanup)
 let remoteRecordingBy = null; // Anzeigename, falls ein ANDERER gerade aufnimmt
 let remoteRecordingId = null; // dessen identity (Banner sauber entfernen bei Disconnect)
+let recCanvas = null;      // Canvas, auf das der geteilte Bildschirm gemalt wird (Aufnahme-Bild)
+let recCanvasCtx = null;
+let recCanvasStream = null; // captureStream() des Canvas -> stabiler Video-Track für die Aufnahme
+let recSourceVideo = null; // internes <video>, spielt den aktuellen Screenshare-Track (Quelle fürs Canvas)
+let recSourceTrackId = null;
+let recRafId = null;
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -534,11 +540,21 @@ async function startRecording() {
     if (recAudioCtx.state === "suspended") { try { await recAudioCtx.resume(); } catch (_) {} }
     participants().forEach(addParticipantAudioToMix);
 
-    const videoTrack = currentScreenShareVideoTrack();
-    const mimeType = pickRecMime(!!videoTrack);
-    if (!mimeType) { flashStatus("Aufnahme-Format wird von diesem Browser nicht unterstützt.", "is-error"); stopAudioMix(); return; }
+    // Bild immer über ein Canvas aufnehmen (nicht den Screenshare-Track direkt):
+    // ein fremder/dynamischer Track wird von MediaRecorder oft NICHT erfasst
+    // (genau das Symptom "nur Ton"). Das Canvas malt den geteilten Bildschirm
+    // kontinuierlich ab und liefert einen stabilen, lokalen Video-Track — und
+    // nimmt so auch erst NACH dem Start gestartetes Teilen automatisch mit.
     const tracks = recDest.stream.getAudioTracks().slice();
-    if (videoTrack) tracks.push(videoTrack);
+    let mimeType = pickRecMime(true);
+    if (mimeType) {
+      const canvasTrack = startCanvasVideo();
+      if (canvasTrack) tracks.push(canvasTrack);
+      else mimeType = pickRecMime(false); // captureStream nicht verfügbar -> nur Ton
+    } else {
+      mimeType = pickRecMime(false); // Browser kann kein Video aufnehmen -> nur Ton
+    }
+    if (!mimeType) { flashStatus("Aufnahme-Format wird von diesem Browser nicht unterstützt.", "is-error"); stopRecMix(); return; }
 
     recChunks = [];
     recMimeType = mimeType;
@@ -548,10 +564,10 @@ async function startRecording() {
     recorder.start(1000);
     broadcastRecording(true);
     updateRecordingUI();
-    flashStatus(videoTrack ? "Aufnahme gestartet (Ton + Bildschirm)." : "Aufnahme gestartet (Ton).", "is-ok");
+    flashStatus(mimeType.indexOf("video") === 0 ? "Aufnahme läuft (Ton + Bild)." : "Aufnahme läuft (nur Ton).", "is-ok");
   } catch (e) {
     flashStatus("Aufnahme konnte nicht gestartet werden" + (e && e.message ? ": " + e.message : ""), "is-error");
-    stopAudioMix();
+    stopRecMix();
     recorder = null;
     updateRecordingUI();
   }
@@ -567,7 +583,7 @@ function stopRecording() {
 
 function finishRecordingDownload() {
   const chunks = recChunks; recChunks = [];
-  stopAudioMix();
+  stopRecMix();
   if (!chunks.length) return;
   const blob = new Blob(chunks, { type: recMimeType || "application/octet-stream" });
   const ext = recMimeType.indexOf("mp4") >= 0 ? "mp4" : recMimeType.indexOf("ogg") >= 0 ? "ogg" : "webm";
@@ -603,7 +619,64 @@ function currentScreenShareVideoTrack() {
   return mst && mst.readyState === "live" ? mst : null;
 }
 
-function stopAudioMix() {
+// Canvas-Video für die Aufnahme: malt den aktuell geteilten Bildschirm
+// kontinuierlich ab (oder einen Platzhalter, wenn keiner teilt) und liefert
+// per captureStream einen stabilen Video-Track. Dieser "Umweg" ist der Grund,
+// warum jetzt auch fremde/später gestartete Screenshares im Video landen.
+function startCanvasVideo() {
+  recCanvas = document.createElement("canvas");
+  recCanvas.width = 1280;
+  recCanvas.height = 720;
+  recCanvasCtx = recCanvas.getContext("2d", { alpha: false });
+  recSourceVideo = document.createElement("video");
+  recSourceVideo.muted = true;
+  recSourceVideo.playsInline = true;
+  recSourceTrackId = null;
+  drawRecFrame();
+  if (typeof recCanvas.captureStream !== "function") return null;
+  recCanvasStream = recCanvas.captureStream(15);
+  return recCanvasStream.getVideoTracks()[0] || null;
+}
+
+function drawRecFrame() {
+  const ctx = recCanvasCtx;
+  if (!ctx) return;
+  const W = recCanvas.width, H = recCanvas.height;
+  const mst = currentScreenShareVideoTrack();
+  ctx.fillStyle = "#10131a";
+  ctx.fillRect(0, 0, W, H);
+  if (mst) {
+    if (recSourceTrackId !== mst.id) {
+      try { recSourceVideo.srcObject = new MediaStream([mst]); recSourceVideo.play().catch(() => {}); } catch (_) {}
+      recSourceTrackId = mst.id;
+    }
+    const vw = recSourceVideo.videoWidth, vh = recSourceVideo.videoHeight;
+    if (vw && vh) {
+      const scale = Math.min(W / vw, H / vh);
+      const dw = vw * scale, dh = vh * scale;
+      try { ctx.drawImage(recSourceVideo, (W - dw) / 2, (H - dh) / 2, dw, dh); } catch (_) {}
+    }
+  } else {
+    recSourceTrackId = null;
+    ctx.fillStyle = "#8a93a6";
+    ctx.font = "600 30px 'Segoe UI', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Besprechung läuft – kein geteilter Bildschirm", W / 2, H / 2);
+  }
+  recRafId = requestAnimationFrame(drawRecFrame);
+}
+
+function stopCanvasVideo() {
+  if (recRafId) { cancelAnimationFrame(recRafId); recRafId = null; }
+  if (recCanvasStream) { recCanvasStream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} }); recCanvasStream = null; }
+  if (recSourceVideo) { try { recSourceVideo.srcObject = null; } catch (_) {} recSourceVideo = null; }
+  recCanvas = null; recCanvasCtx = null; recSourceTrackId = null;
+}
+
+// Räumt Audio-Mix UND Canvas-Video auf.
+function stopRecMix() {
+  stopCanvasVideo();
   if (recSources) { recSources.forEach((s) => { try { s.disconnect(); } catch (_) {} }); recSources = new Map(); }
   if (recAudioCtx) { try { recAudioCtx.close(); } catch (_) {} recAudioCtx = null; }
   recDest = null;
