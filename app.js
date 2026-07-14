@@ -7,7 +7,8 @@
 
 const LK = window.LivekitClient || null;
 
-let me = null;            // { username, vorname, nachname, ... } vom Gateway
+let me = null;            // { username, vorname, nachname, canEdit, ... } vom Gateway
+let isModerator = false;  // = me.canEdit (Bearbeiter-Gruppen der Besprechung) → darf kicken/stummschalten
 let room = null;          // aktive LivekitClient.Room-Instanz (oder null)
 const speaking = new Set(); // Identities, die gerade sprechen
 let stageTrack = null;    // aktuell auf der Bühne gezeigter ScreenShare-Track
@@ -51,6 +52,7 @@ async function init() {
   if (!getSessionToken()) { showConnect(); return; }
   try {
     me = await fetchMe();
+    isModerator = !!me.canEdit;
     showAppShell();
   } catch (e) {
     if (e instanceof NotLoggedInError) showConnect();
@@ -287,7 +289,63 @@ function tileFor(p) {
     sh.textContent = "🖥️ teilt Bildschirm";
     tile.appendChild(sh);
   }
+
+  // Moderations-Aktionen: nur für Bearbeiter (me.canEdit) und nur auf fremden
+  // Kacheln. Die eigentliche Berechtigung wird serverseitig nochmal geprüft
+  // (admin-worker.js resolveEditPermission) — diese Buttons sind reine UI.
+  if (isModerator && !isLocal) {
+    const modBar = document.createElement("div");
+    modBar.className = "tile-mod";
+
+    const muteBtn = document.createElement("button");
+    muteBtn.type = "button";
+    muteBtn.className = "tile-mod-btn";
+    muteBtn.textContent = "🔇 Stumm";
+    muteBtn.title = micOn ? "Diesen Teilnehmer stummschalten" : "Bereits stummgeschaltet";
+    muteBtn.disabled = !micOn;
+    muteBtn.addEventListener("click", () => moderatorMute(p));
+    modBar.appendChild(muteBtn);
+
+    const kickBtn = document.createElement("button");
+    kickBtn.type = "button";
+    kickBtn.className = "tile-mod-btn danger";
+    kickBtn.textContent = "🚪 Entfernen";
+    kickBtn.title = "Diesen Teilnehmer aus dem Raum entfernen";
+    kickBtn.addEventListener("click", () => moderatorKick(p));
+    modBar.appendChild(kickBtn);
+
+    tile.appendChild(modBar);
+  }
   return tile;
+}
+
+// ------------------------------------------------------------------
+// Moderation (nur Bearbeiter) — kicken / stummschalten. Beides läuft über den
+// Worker (LiveKit-Server-API), NIE direkt vom Client: der Worker prüft die
+// Berechtigung erneut und hält als Einziger den API-Secret. Das Ergebnis
+// (Teilnehmer weg / Track stumm) kommt als normales LiveKit-Event zurück und
+// aktualisiert die Kacheln von selbst — kein manuelles Neu-Rendern nötig.
+// ------------------------------------------------------------------
+async function moderatorMute(p) {
+  const pub = p.getTrackPublication(LK.Track.Source.Microphone);
+  const sid = pub && pub.trackSid;
+  if (!sid) { flashStatus(displayNameOf(p) + " ist bereits stumm.", "is-ok"); return; }
+  try {
+    await livekitMute(ROOM_NAME, p.identity, sid);
+    flashStatus(displayNameOf(p) + " stummgeschaltet.", "is-ok");
+  } catch (e) {
+    flashStatus("Stummschalten fehlgeschlagen" + (e && e.message ? ": " + e.message : ""), "is-error");
+  }
+}
+
+async function moderatorKick(p) {
+  if (!confirm(displayNameOf(p) + " aus dem Raum entfernen?")) return;
+  try {
+    await livekitKick(ROOM_NAME, p.identity);
+    flashStatus(displayNameOf(p) + " entfernt.", "is-ok");
+  } catch (e) {
+    flashStatus("Entfernen fehlgeschlagen" + (e && e.message ? ": " + e.message : ""), "is-error");
+  }
 }
 
 // ------------------------------------------------------------------

@@ -53,3 +53,13 @@ async function fetchMe() {
 async function fetchLivekitToken(room) {
   return gatewayRequest({ action: "livekit-token", app: GATEWAY_APP_ID, room });
 }
+
+// Moderations-Aktionen (nur Bearbeiter). Der Worker prüft die Berechtigung
+// (resolveEditPermission) und führt den eigentlichen LiveKit-Server-Befehl
+// aus — der Client stößt ihn nur an.
+async function livekitKick(room, identity) {
+  return gatewayRequest({ action: "livekit-kick", app: GATEWAY_APP_ID, room, identity });
+}
+async function livekitMute(room, identity, trackSid) {
+  return gatewayRequest({ action: "livekit-mute", app: GATEWAY_APP_ID, room, identity, trackSid });
+}

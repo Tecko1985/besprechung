@@ -181,6 +181,16 @@ button.btn:disabled { opacity: 0.55; cursor: default; }
   font-size: 11px; font-weight: 700; color: var(--gold);
   display: flex; align-items: center; gap: 4px;
 }
+.tile-mod { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
+.tile-mod-btn {
+  font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--gray); color: var(--text);
+  border-radius: 6px; padding: 3px 8px; cursor: pointer; line-height: 1.3;
+}
+.tile-mod-btn:hover { background: #e9ebef; }
+.tile-mod-btn:disabled { opacity: 0.5; cursor: default; }
+.tile-mod-btn.danger { color: var(--red); border-color: #f0c4bd; }
+.tile-mod-btn.danger:hover { background: var(--red-light); }
 
 /* ---------- Steuerleiste ---------- */
 .controls {

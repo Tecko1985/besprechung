@@ -1,4 +1,4 @@
-const APP_VERSION = "1.1";
+const APP_VERSION = "1.2";
 
 // Fester Hauptraum. Die Besprechung kennt bewusst nur EINEN Raum. Mehrere
 // „Kanäle" ließen sich später ergänzen, indem man hier mehrere Räume anbietet
@@ -8,6 +8,18 @@ const ROOM_NAME = "besprechung";
 const ROOM_LABEL = "Besprechung";
 
 const APP_CHANGELOG = [
+  {
+    version: "1.2",
+    groups: [
+      {
+        title: "Moderation",
+        items: [
+          "Bearbeiter-Gruppen können Teilnehmer jetzt stummschalten oder aus dem Raum entfernen — die Buttons erscheinen direkt auf der jeweiligen Teilnehmer-Kachel.",
+          "Die Besprechung öffnet sich beim Anklicken in der Tools-Übersicht in einem neuen Tab."
+        ]
+      }
+    ]
+  },
   {
     version: "1.1",
     groups: [
