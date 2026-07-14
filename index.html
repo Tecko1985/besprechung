@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🎙️ Trainerraum</title>
+<meta name="theme-color" content="#1a56a0" />
+<link rel="stylesheet" href="style.css?v=1.0" />
+</head>
+<body>
+
+  <!-- ---------- Nicht angemeldet ---------- -->
+  <div class="connect-screen" id="connect-screen">
+    <div class="card">
+      <h2>🎙️ Trainerraum</h2>
+      <p id="connect-message">Bitte über die Tools-Übersicht anmelden, um den Trainerraum zu betreten.</p>
+      <div class="btn-row">
+        <a class="btn" href="https://tecko1985.github.io/ToolsUebersicht/">Zur Tools-Übersicht</a>
+      </div>
+      <p class="muted" id="cloud-error" style="margin-top:14px;"></p>
+    </div>
+  </div>
+
+  <!-- ---------- Angemeldet ---------- -->
+  <div id="app-shell" style="display:none;">
+    <header>
+      <h1>🎙️ Trainerraum <span class="version-badge version-badge-link" id="version-badge" role="button" tabindex="0" title="Versionshistorie ansehen"></span></h1>
+      <a href="https://tecko1985.github.io/ToolsUebersicht/" class="back-to-dashboard">← Zurück zum Dashboard</a>
+      <div class="header-right">
+        <span class="header-status" id="save-status"></span>
+        <span class="header-user" id="header-user"></span>
+        <img class="header-logo" src="logo.png" alt="1. SC 1911 e.V. Heilbad Heiligenstadt" />
+      </div>
+    </header>
+
+    <main>
+
+      <!-- ---------- Lobby (vor dem Betreten) ---------- -->
+      <section id="lobby">
+        <div class="card lobby-card">
+          <h2 id="lobby-title">Trainerversammlung</h2>
+          <p class="muted">
+            Der digitale Treffpunkt für Trainer: Betritt den Raum, um mit den anderen zu sprechen,
+            und teile bei Bedarf deinen Bildschirm — alles direkt im Browser, ohne Zusatz-App.
+          </p>
+          <div class="lobby-actions">
+            <label class="check-label"><input type="checkbox" id="join-muted" /> Stummgeschaltet beitreten</label>
+            <button class="btn success" id="btn-join">🎙️ Raum betreten</button>
+          </div>
+          <p class="muted lobby-hint" id="lobby-hint">
+            Beim ersten Betreten fragt der Browser nach Mikrofon-Zugriff — das ist nötig, damit dich
+            die anderen hören.
+          </p>
+          <p class="muted lobby-error" id="lobby-error"></p>
+        </div>
+      </section>
+
+      <!-- ---------- Im Raum ---------- -->
+      <section id="room" class="hidden">
+        <div class="stage hidden" id="stage">
+          <div class="stage-label" id="stage-label"></div>
+          <!-- geteiltes Bildschirm-Video wird hier eingehängt -->
+        </div>
+        <div class="room-bar">
+          <span class="room-count" id="room-count"></span>
+          <button class="btn small secondary hidden" id="btn-audio-unlock">🔊 Ton aktivieren</button>
+        </div>
+        <div class="participant-grid" id="participant-grid"></div>
+      </section>
+
+    </main>
+
+    <!-- ---------- Steuerleiste (nur im Raum) ---------- -->
+    <div class="controls hidden" id="controls">
+      <button class="ctrl-btn" id="btn-mic" type="button">
+        <span class="ctrl-icon" id="mic-icon">🎙️</span>
+        <span class="ctrl-label" id="mic-label">Mikro an</span>
+      </button>
+      <button class="ctrl-btn" id="btn-screen" type="button">
+        <span class="ctrl-icon">🖥️</span>
+        <span class="ctrl-label" id="screen-label">Bildschirm teilen</span>
+      </button>
+      <button class="ctrl-btn danger" id="btn-leave" type="button">
+        <span class="ctrl-icon">🚪</span>
+        <span class="ctrl-label">Verlassen</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- versteckter Sammelpunkt für die Audio-Elemente der anderen -->
+  <div id="audio-sink" style="display:none;"></div>
+
+  <!-- ---------- Changelog-Modal ---------- -->
+  <div class="modal-overlay hidden" id="changelog-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Änderungen</h2>
+        <button class="modal-close" id="changelog-close" aria-label="Schließen">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="changelog-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+  <script src="config.js?v=1.0"></script>
+  <script src="db.js?v=1.0"></script>
+  <script src="app.js?v=1.0"></script>
+</body>
+</html>

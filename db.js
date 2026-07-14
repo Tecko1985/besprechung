@@ -1,0 +1,55 @@
+// Zugang über das zentrale ToolsUebersicht-Login-Gateway — gleiches Muster wie
+// die anderen Gateway-Apps (Vorbild E:\abwesenheitskalender\db.js), aber
+// ZUSTANDSLOS: der Trainerraum speichert nichts in Nextcloud (kein
+// dav-load/dav-save). Die einzige Server-Aufgabe ist, dem eingeloggten &
+// berechtigten Trainer ein kurzlebiges LiveKit-Zugangstoken auszustellen
+// (Aktion "livekit-token" im admin-worker.js). Der LiveKit-API-Secret bleibt
+// dabei serverseitig — der Client bekommt nur das fertige, signierte Token.
+const GATEWAY_URL = "https://landingpage.michel-brunner.workers.dev";
+const TOKEN_STORAGE_KEY = "tu_session_token";
+const GATEWAY_APP_ID = "trainerraum";
+
+class NotLoggedInError extends Error {
+  constructor(message) {
+    super(message || "Nicht angemeldet");
+    this.name = "NotLoggedInError";
+  }
+}
+
+function getSessionToken() {
+  try { return localStorage.getItem(TOKEN_STORAGE_KEY); } catch (_) { return null; }
+}
+
+async function gatewayRequest(payload) {
+  const token = getSessionToken();
+  if (!token) throw new NotLoggedInError();
+  const resp = await fetch(GATEWAY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify(payload)
+  });
+  if (resp.status === 401) throw new NotLoggedInError("Sitzung abgelaufen");
+  if (resp.status === 403) throw new Error("Kein Zugriff auf diesen Trainerraum.");
+  if (!resp.ok) {
+    let detail = "";
+    try { const b = await resp.json(); if (b && b.error) detail = ": " + b.error; } catch (_) {}
+    throw new Error(`Gateway-Fehler (HTTP ${resp.status})${detail}`);
+  }
+  return resp.json();
+}
+
+// Liefert {username, isAdmin, groupIds, vorname, nachname, canEdit} der eingeloggten Person.
+async function fetchMe() {
+  return gatewayRequest({ action: "me", app: GATEWAY_APP_ID });
+}
+
+// Fordert ein LiveKit-Access-Token für den angegebenen Raum an. Liefert
+// { token, url, identity, name }:
+//   token    – signiertes LiveKit-JWT (gültig wenige Stunden)
+//   url      – wss://…​.livekit.cloud-Adresse der LiveKit-Cloud (aus Worker-Secret,
+//              nicht im Client hartkodiert)
+//   identity – eindeutige Teilnehmer-ID (= Gateway-Username)
+//   name     – Anzeigename für die Teilnehmer-Kachel
+async function fetchLivekitToken(room) {
+  return gatewayRequest({ action: "livekit-token", app: GATEWAY_APP_ID, room });
+}
