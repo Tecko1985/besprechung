@@ -12,6 +12,7 @@ let room = null;          // aktive LivekitClient.Room-Instanz (oder null)
 const speaking = new Set(); // Identities, die gerade sprechen
 let stageTrack = null;    // aktuell auf der Bühne gezeigter ScreenShare-Track
 let stageSid = null;      // dessen trackSid (Doppel-Attach vermeiden)
+let stageWatchdog = null; // siehe startStageWatchdog() -- Selbstheilung bei unsauber beendetem Screenshare
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -301,7 +302,7 @@ function findScreenShare() {
 
 function renderStage() {
   const share = findScreenShare();
-  if (!share) { clearStage(); return; }
+  if (!share || !isTrackAlive(share.track)) { clearStage(); return; }
   if (share.pub.trackSid === stageSid) return; // schon angezeigt
   clearStage();
   const video = share.track.attach();
@@ -312,9 +313,34 @@ function renderStage() {
   stageEl.classList.remove("hidden");
   stageTrack = share.track;
   stageSid = share.pub.trackSid;
+  startStageWatchdog();
+}
+
+// Erkennt ein Track-Objekt, dessen zugrundeliegender MediaStreamTrack bereits
+// (still, ohne LiveKit-Event) beendet ist -- der Fall auf manchen Mobil-
+// Browsern, siehe attachNativeStopWatcher().
+function isTrackAlive(track) {
+  const mst = track && track.mediaStreamTrack;
+  return !!mst && mst.readyState === "live";
+}
+
+// Sicherheitsnetz gegen genau den Fall, den attachNativeStopWatcher() beim
+// TEILENDEN abfängt, aber aus Sicht der ZUSCHAUENDEN: prüft alle paar
+// Sekunden, ob der aktuell auf der Bühne gezeigte Track noch lebt, und räumt
+// sonst selbst auf, statt dauerhaft ein eingefrorenes/schwarzes Bild zu zeigen.
+function startStageWatchdog() {
+  stopStageWatchdog();
+  stageWatchdog = setInterval(() => {
+    if (stageTrack && !isTrackAlive(stageTrack)) renderStage();
+  }, 3000);
+}
+
+function stopStageWatchdog() {
+  if (stageWatchdog) { clearInterval(stageWatchdog); stageWatchdog = null; }
 }
 
 function clearStage() {
+  stopStageWatchdog();
   if (stageTrack) { try { stageTrack.detach().forEach((el) => el.remove()); } catch (_) {} }
   stageEl.querySelectorAll("video").forEach((v) => v.remove());
   stageEl.classList.add("hidden");
@@ -343,11 +369,30 @@ async function toggleScreen() {
   const on = room.localParticipant.isScreenShareEnabled;
   try {
     await room.localParticipant.setScreenShareEnabled(!on, { audio: true });
+    if (!on) attachNativeStopWatcher();
   } catch (e) {
     // Nutzer hat die Auswahl abgebrochen o. Ä. — kein harter Fehler.
   }
   updateControls();
   renderStage();
+}
+
+// Manche mobilen Browser feuern beim Sperren des Displays oder Wegwischen des
+// geteilten Tabs kein sauberes LiveKit-Unpublish aus (bekannte Schwachstelle
+// von getDisplayMedia auf Mobilgeräten) -- das native "ended"-Event des
+// Browser-eigenen Freigabe-Streams fängt genau diesen Fall zusätzlich ab und
+// beendet das Teilen sauber, statt dass es bei anderen als Leiche stehen bleibt.
+function attachNativeStopWatcher() {
+  const pub = room.localParticipant.getTrackPublication(LK.Track.Source.ScreenShare);
+  const mst = pub && pub.track && pub.track.mediaStreamTrack;
+  if (!mst) return;
+  mst.addEventListener("ended", () => {
+    if (room && room.localParticipant.isScreenShareEnabled) {
+      room.localParticipant.setScreenShareEnabled(false).catch(() => {});
+    }
+    updateControls();
+    renderStage();
+  }, { once: true });
 }
 
 function updateControls() {
