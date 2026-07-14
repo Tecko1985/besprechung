@@ -1,4 +1,4 @@
-const APP_VERSION = "1.4";
+const APP_VERSION = "1.5";
 
 // Fester Hauptraum. Die Besprechung kennt bewusst nur EINEN Raum. Mehrere
 // „Kanäle" ließen sich später ergänzen, indem man hier mehrere Räume anbietet
@@ -8,6 +8,17 @@ const ROOM_NAME = "besprechung";
 const ROOM_LABEL = "Besprechung";
 
 const APP_CHANGELOG = [
+  {
+    version: "1.5",
+    groups: [
+      {
+        title: "Aufnahme",
+        items: [
+          "Die Aufnahme erfasst jetzt auch Teilnehmer, die erst nach dem Start dazukommen oder ihr Mikrofon erst später einschalten — vorher fehlte deren Ton in der Aufzeichnung."
+        ]
+      }
+    ]
+  },
   {
     version: "1.4",
     groups: [

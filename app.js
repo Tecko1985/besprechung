@@ -231,7 +231,7 @@ function wireRoomEvents(r) {
    .on(E.DataReceived, onDataReceived)
    .on(E.TrackSubscribed, onTrackSubscribed)
    .on(E.TrackUnsubscribed, onTrackUnsubscribed)
-   .on(E.LocalTrackPublished, () => { renderStage(); renderParticipants(); updateControls(); })
+   .on(E.LocalTrackPublished, () => { renderStage(); renderParticipants(); updateControls(); refreshRecMix(); })
    .on(E.LocalTrackUnpublished, () => { renderStage(); renderParticipants(); updateControls(); })
    .on(E.TrackMuted, renderParticipants)
    .on(E.TrackUnmuted, renderParticipants)
@@ -245,6 +245,7 @@ function onTrackSubscribed(track, publication, participant) {
     const el = track.attach();
     el.autoplay = true;
     audioSink.appendChild(el);
+    refreshRecMix(); // neu erschienene Stimme in eine laufende Aufnahme aufnehmen
   } else if (publication.source === LK.Track.Source.ScreenShare) {
     renderStage();
   }
@@ -598,10 +599,17 @@ function finishRecordingDownload() {
 }
 
 function addTrackToMix(mst, key) {
-  if (!recAudioCtx || !mst || recSources.has(key)) return;
+  if (!recAudioCtx || !mst) return;
+  const existing = recSources.get(key);
+  if (existing) {
+    if (existing._mstId === mst.id) return;      // exakt dieser Track ist schon im Mix
+    try { existing.disconnect(); } catch (_) {}   // alter Track (z.B. von vor dem mute) -> ersetzen
+    recSources.delete(key);
+  }
   try {
     const src = recAudioCtx.createMediaStreamSource(new MediaStream([mst]));
     src.connect(recDest);
+    src._mstId = mst.id;
     recSources.set(key, src);
   } catch (_) {}
 }
@@ -611,6 +619,16 @@ function addParticipantAudioToMix(p) {
   if (mic && mic.track && mic.track.mediaStreamTrack) addTrackToMix(mic.track.mediaStreamTrack, "mic:" + p.identity);
   const sha = p.getTrackPublication(LK.Track.Source.ScreenShareAudio);
   if (sha && sha.track && sha.track.mediaStreamTrack) addTrackToMix(sha.track.mediaStreamTrack, "sha:" + p.identity);
+}
+
+// Zieht einen bereits laufenden Aufnahme-Mix auf den aktuellen Teilnehmerstand
+// nach. Ohne das landet nur, wer beim Aufnahmestart schon ein aktives Mikro hatte,
+// im Ton -- später hinzugekommene Teilnehmer, erst danach eingeschaltete Mikros und
+// mute+unmute (= technisch ein neuer Track) würden sonst stumm fehlen. addTrackToMix
+// ist idempotent bzw. ersetzt geänderte Tracks, daher gefahrlos wiederholbar.
+function refreshRecMix() {
+  if (!recorder || !recAudioCtx) return;
+  participants().forEach(addParticipantAudioToMix);
 }
 
 function currentScreenShareVideoTrack() {
