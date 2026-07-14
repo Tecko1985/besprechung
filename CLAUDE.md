@@ -56,11 +56,19 @@ den vorhandenen `bytesToBase64Url()`-Helper mitbenutzt. Identity = Gateway-Usern
 
 ## Rechte
 
-`userMayAccessTool("besprechung", ...)` — identische Sichtbarkeitslogik wie jede
-andere App (Admin-Panel-Gruppen-Sichtbarkeit in `sichtbarkeit.json`). Kein
-gesondertes Bearbeiten-Konzept (`editGroupIds`) — im Raum sind alle gleichberechtigt,
-es gibt keine Rolle „Moderator", die z. B. andere stummschalten könnte (bewusst
-schlanker Scope für den Start).
+**Sehen/Betreten:** `userMayAccessTool("besprechung", ...)` — identische
+Sichtbarkeitslogik wie jede andere App (Admin-Panel-Gruppen-Sichtbarkeit in
+`sichtbarkeit.json`). Jede berechtigte Person bekommt über `livekit-token` ein
+Teilnehmer-Token (reden/zuhören/Bildschirm teilen).
+
+**Moderieren (seit 1.2):** zusätzlich `editGroupIds` (dieselbe „Bearbeiter"-Logik
+wie bei den anderen Apps, serverseitig über `resolveEditPermission("besprechung", …)`).
+Nur Bearbeiter dürfen andere stummschalten/aus dem Raum entfernen (Worker-Aktionen
+`livekit-kick`/`livekit-mute`, laufen über ein kurzlebiges `roomAdmin`-Token, das
+den API-Secret nie an den Client gibt) und die Besprechung lokal aufnehmen (1.4).
+Der Client berechnet die UI-Sichtbarkeit dieser Buttons aus `me.canEdit`
+(`fetchMe()` schickt `app:"besprechung"` mit), der Worker prüft die Berechtigung
+bei jeder Aktion erneut — die Buttons sind reine UI.
 
 ## Raum-Modell
 
@@ -80,10 +88,12 @@ für eine Erweiterung also keinen Worker-Redeploy.
 - **Bildschirm-Teilen vom Handy aus ist geräteabhängig unzuverlässig** (siehe
   robustheits-Fix unten) — auf Android technisch möglich, aber nicht garantiert
   stabil; praktische Empfehlung bleibt Laptop/Desktop für die teilende Person.
-- **Kein Moderator-/Mute-fremder-Teilnehmer-Recht** — jede:r verwaltet nur das eigene
-  Mikro/den eigenen Screenshare.
-- **Kein Chat, keine Aufzeichnung, keine Warteraum-Funktion** — bewusst schlanker
-  Scope (reiner Sprach-/Screenshare-Treffpunkt).
+- **Kein Chat, keine Warteraum-Funktion** — bewusst schlanker Scope (reiner
+  Sprach-/Screenshare-Treffpunkt). Moderation (kicken/stummschalten) und lokale
+  Aufnahme gibt es seit 1.2/1.4, aber nur für Bearbeiter (siehe „## Rechte").
+- **Aufnahme ist rein lokal (MediaRecorder), kein LiveKit-Egress** — sie läuft nur,
+  solange der aufnehmende Tab offen ist, und die Datei landet auf dessen Gerät. Wer
+  während einer laufenden Aufnahme den Raum verlässt/den Tab schließt, beendet sie.
 - **Token-TTL 6h ohne Refresh-Logik** — für eine einzelne Versammlung/Absprache
   reichlich; eine Sitzung, die länger als 6h ohne Neuladen der Seite läuft, würde neu
   verbinden müssen (kein bekannter Anwendungsfall bisher).
