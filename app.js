@@ -29,6 +29,12 @@ let recCanvasStream = null; // captureStream() des Canvas -> stabiler Video-Trac
 let recSourceVideo = null; // internes <video>, spielt den aktuellen Screenshare-Track (Quelle fürs Canvas)
 let recSourceTrackId = null;
 let recRafId = null;
+// Transkription (lokal, nachträglich via Whisper/transformers.js — kein Server/Egress)
+let wantTranscript = false;     // Moderator-Toggle: beim Stoppen zusätzlich transkribieren
+let lastRecordingBlob = null;   // letzte fertige Aufnahme (für nachträgliches Transkribieren im Speicher gehalten)
+let transformersMod = null;     // gecachtes transformers.js-Modul (lazy von jsDelivr geladen)
+let whisperPipe = null;         // gecachte ASR-Pipeline (Modell einmalig geladen)
+let transcribing = false;       // läuft gerade eine Transkription?
 
 // ---------- DOM ----------
 const $ = (id) => document.getElementById(id);
@@ -52,6 +58,9 @@ const saveStatus = $("save-status");
 const btnRecord = $("btn-record");
 const recBanner = $("rec-banner");
 const recBannerText = $("rec-banner-text");
+const btnTranscribe = $("btn-transcribe");
+const transcribeStatus = $("transcribe-status");
+const transcribeStatusText = $("transcribe-status-text");
 
 const screenSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
 
@@ -103,6 +112,7 @@ function setupStaticButtons() {
   btnScreen.addEventListener("click", toggleScreen);
   btnLeave.addEventListener("click", leaveRoom);
   btnRecord.addEventListener("click", toggleRecording);
+  btnTranscribe.addEventListener("click", toggleTranscribeWish);
   btnAudioUnlock.addEventListener("click", unlockAudio);
   window.addEventListener("beforeunload", () => { if (room) { try { room.disconnect(); } catch (_) {} } });
 }
@@ -517,6 +527,10 @@ async function unlockAudio() {
 // ------------------------------------------------------------------
 const recordingSupported = typeof window.MediaRecorder !== "undefined" &&
   !!(window.AudioContext || window.webkitAudioContext);
+// Transkription braucht WebAssembly + Offline-Audio-Dekodierung (Resampling auf 16 kHz).
+const transcribeSupported = typeof WebAssembly !== "undefined" &&
+  !!(window.AudioContext || window.webkitAudioContext) &&
+  !!(window.OfflineAudioContext || window.webkitOfflineAudioContext);
 
 function pickRecMime(hasVideo) {
   const cands = hasVideo
@@ -582,20 +596,179 @@ function stopRecording() {
   flashStatus("Aufnahme beendet — Datei wird heruntergeladen.", "is-ok");
 }
 
+function recStamp() {
+  return new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
+}
+
+function downloadBlob(blob, filename) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => { try { URL.revokeObjectURL(a.href); } catch (_) {} }, 15000);
+}
+
 function finishRecordingDownload() {
   const chunks = recChunks; recChunks = [];
   stopRecMix();
   if (!chunks.length) return;
   const blob = new Blob(chunks, { type: recMimeType || "application/octet-stream" });
   const ext = recMimeType.indexOf("mp4") >= 0 ? "mp4" : recMimeType.indexOf("ogg") >= 0 ? "ogg" : "webm";
-  const stamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "Besprechung_" + stamp + "." + ext;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => { try { URL.revokeObjectURL(a.href); } catch (_) {} }, 15000);
+  const stamp = recStamp();
+  lastRecordingBlob = blob;   // für nachträgliches Transkribieren im Speicher halten
+  downloadBlob(blob, "Besprechung_" + stamp + "." + ext);
+  // Transkript ist Opt-in (Moderator-Toggle) — es lädt ein Sprachmodell nach und dauert.
+  if (wantTranscript && transcribeSupported) transcribeRecording(blob, stamp);
+}
+
+// ------------------------------------------------------------------
+// Transkription — lokal, nachträglich (Whisper via transformers.js).
+// Läuft komplett im Browser: der fertige Aufnahme-Blob (enthält den Ton
+// ALLER Teilnehmer, siehe recDest-Mix) wird auf 16 kHz Mono dekodiert und
+// durch Whisper geschickt. Kein Server/Egress — nur das Sprachmodell wird
+// einmalig vom selben CDN wie LiveKit (jsDelivr) geladen und danach vom
+// Browser gecacht. Ergebnis: .txt (mit Zeitmarken) + .vtt (Untertitel).
+// ------------------------------------------------------------------
+const WHISPER_CDN = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2";
+const WHISPER_MODEL = "Xenova/whisper-base";  // mehrsprachig, quantisiert ~80 MB, für Deutsch ausreichend
+
+function toggleTranscribeWish() {
+  if (transcribing) return;
+  wantTranscript = !wantTranscript;
+  updateRecordingUI();
+  if (wantTranscript && lastRecordingBlob && !recorder) {
+    // Toggle erst NACH einer Aufnahme aktiviert -> die letzte gleich transkribieren.
+    transcribeRecording(lastRecordingBlob, recStamp());
+  } else {
+    flashStatus(wantTranscript
+      ? "Transkript aktiv: nach dem Stoppen wird ein Textprotokoll erstellt."
+      : "Transkript deaktiviert.", "is-ok");
+  }
+}
+
+function setTranscribeStatus(msg) {
+  if (!transcribeStatus) return;
+  if (msg == null) { transcribeStatus.classList.add("hidden"); return; }
+  transcribeStatusText.textContent = msg;
+  transcribeStatus.classList.remove("hidden");
+}
+
+async function loadTransformers() {
+  if (transformersMod) return transformersMod;
+  transformersMod = await import(/* @vite-ignore */ WHISPER_CDN + "/dist/transformers.min.js");
+  return transformersMod;
+}
+
+async function getWhisper() {
+  if (whisperPipe) return whisperPipe;
+  const t = await loadTransformers();
+  if (t.env) { t.env.allowLocalModels = false; }   // nur Remote-Modell, kein Selbst-Hosting nötig
+  whisperPipe = await t.pipeline("automatic-speech-recognition", WHISPER_MODEL, {
+    dtype: "q8",   // quantisiert: ~80 MB statt ~290 MB fp32 (v3 lädt sonst die vollen Gewichte)
+    progress_callback: (p) => {
+      if (p && p.status === "progress" && typeof p.progress === "number") {
+        setTranscribeStatus("Sprachmodell wird geladen … " + Math.round(p.progress) + "%");
+      }
+    },
+  });
+  return whisperPipe;
+}
+
+// Dekodiert den Aufnahme-Blob und rendert ihn per OfflineAudioContext auf
+// 16 kHz Mono (das erwartet Whisper) — robust auch wenn der Browser die
+// Ziel-Samplerate beim decodeAudioData ignoriert.
+async function decodeTo16kMono(blob) {
+  const arr = await blob.arrayBuffer();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const tmp = new AC();
+  let decoded;
+  try { decoded = await tmp.decodeAudioData(arr); }
+  finally { try { tmp.close(); } catch (_) {} }
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const frames = Math.max(1, Math.ceil(decoded.duration * 16000));
+  const off = new OAC(1, frames, 16000);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const rendered = await off.startRendering();
+  return rendered.getChannelData(0);   // Float32Array @ 16 kHz mono
+}
+
+async function transcribeRecording(blob, stamp) {
+  if (transcribing || !blob) return;
+  transcribing = true;
+  updateRecordingUI();
+  try {
+    setTranscribeStatus("Sprachmodell wird geladen …");
+    const asr = await getWhisper();
+    setTranscribeStatus("Ton wird vorbereitet …");
+    const pcm = await decodeTo16kMono(blob);
+    setTranscribeStatus("Transkription läuft … (das kann einige Minuten dauern)");
+    const out = await asr(pcm, {
+      language: "german",
+      task: "transcribe",
+      chunk_length_s: 30,
+      stride_length_s: 5,
+      return_timestamps: true,
+    });
+    const chunks = (out && out.chunks && out.chunks.length)
+      ? out.chunks
+      : [{ timestamp: [0, null], text: (out && out.text) || "" }];
+    const base = "Besprechung_" + stamp;
+    downloadBlob(new Blob([buildTranscriptTxt(chunks, stamp)], { type: "text/plain;charset=utf-8" }), base + ".txt");
+    downloadBlob(new Blob([buildTranscriptVtt(chunks)], { type: "text/vtt;charset=utf-8" }), base + ".vtt");
+    setTranscribeStatus(null);
+    flashStatus("Transkript erstellt — .txt und .vtt wurden heruntergeladen.", "is-ok");
+  } catch (e) {
+    setTranscribeStatus(null);
+    flashStatus("Transkription fehlgeschlagen" + (e && e.message ? ": " + e.message : ""), "is-error");
+  } finally {
+    transcribing = false;
+    updateRecordingUI();
+  }
+}
+
+function fmtClock(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return (h ? pad(h) + ":" : "") + pad(m) + ":" + pad(s);
+}
+function fmtVtt(sec) {
+  sec = Math.max(0, sec || 0);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const ms = Math.floor((sec - Math.floor(sec)) * 1000);
+  const pad = (n, l) => String(n).padStart(l, "0");
+  return pad(h, 2) + ":" + pad(m, 2) + ":" + pad(s, 2) + "." + pad(ms, 3);
+}
+function buildTranscriptTxt(chunks, stamp) {
+  const head = "Besprechung – Transkript (" + stamp.replace("_", " ") + ")\n" +
+    "Automatisch erstellt, lokal im Browser. Bitte gegenlesen.\n" +
+    "".padEnd(48, "-") + "\n\n";
+  const body = chunks
+    .map((c) => "[" + fmtClock(c.timestamp && c.timestamp[0]) + "] " + String(c.text || "").trim())
+    .filter((l) => l.replace(/\[[^\]]*\]\s*/, "").length)
+    .join("\n");
+  return head + body + "\n";
+}
+function buildTranscriptVtt(chunks) {
+  let out = "WEBVTT\n\n";
+  let idx = 1;
+  for (const c of chunks) {
+    const text = String(c.text || "").trim();
+    if (!text) continue;
+    const start = c.timestamp && c.timestamp[0] != null ? c.timestamp[0] : 0;
+    const end = c.timestamp && c.timestamp[1] != null ? c.timestamp[1] : start + 2;
+    out += (idx++) + "\n" + fmtVtt(start) + " --> " + fmtVtt(end) + "\n" + text + "\n\n";
+  }
+  return out;
 }
 
 function addTrackToMix(mst, key) {
@@ -742,6 +915,11 @@ function updateRecordingUI() {
   btnRecord.classList.toggle("recording", amRecording);
   $("rec-icon").textContent = amRecording ? "⏹" : "⏺";
   $("rec-label").textContent = amRecording ? "Stoppen" : "Aufnehmen";
+  // Transkript-Toggle: nur für Moderatoren, nur wo Aufnahme + Whisper laufen können.
+  btnTranscribe.classList.toggle("hidden", !(isModerator && recordingSupported && transcribeSupported));
+  btnTranscribe.classList.toggle("active", wantTranscript);
+  btnTranscribe.disabled = transcribing;
+  $("transcribe-label").textContent = wantTranscript ? "Transkript: an" : "Transkript";
   const activeBy = amRecording ? "dir" : remoteRecordingBy;
   if (activeBy) {
     recBannerText.textContent = "Aufnahme läuft" + (activeBy === "dir" ? "" : " (durch " + activeBy + ")");

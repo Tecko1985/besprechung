@@ -1,4 +1,4 @@
-const APP_VERSION = "1.5";
+const APP_VERSION = "1.6";
 
 // Fester Hauptraum. Die Besprechung kennt bewusst nur EINEN Raum. Mehrere
 // „Kanäle" ließen sich später ergänzen, indem man hier mehrere Räume anbietet
@@ -8,6 +8,19 @@ const ROOM_NAME = "besprechung";
 const ROOM_LABEL = "Besprechung";
 
 const APP_CHANGELOG = [
+  {
+    version: "1.6",
+    groups: [
+      {
+        title: "Aufnahme",
+        items: [
+          "Neu: Aus einer Aufnahme lässt sich ein Text-Transkript erstellen. Schalte vor dem Stoppen „Transkript“ ein — nach der Aufnahme entstehen automatisch eine .txt-Datei (mit Zeitmarken) und eine .vtt-Untertiteldatei.",
+          "Die Transkription läuft komplett lokal in deinem Browser (ein Sprachmodell wird beim ersten Mal einmalig geladen) — der Ton verlässt dein Gerät nicht.",
+          "Der Transkript-Schalter und die Aufnahme sind wie bisher nur für Bearbeiter sichtbar."
+        ]
+      }
+    ]
+  },
   {
     version: "1.5",
     groups: [

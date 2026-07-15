@@ -94,6 +94,12 @@ für eine Erweiterung also keinen Worker-Redeploy.
 - **Aufnahme ist rein lokal (MediaRecorder), kein LiveKit-Egress** — sie läuft nur,
   solange der aufnehmende Tab offen ist, und die Datei landet auf dessen Gerät. Wer
   während einer laufenden Aufnahme den Raum verlässt/den Tab schließt, beendet sie.
+- **Transkription (1.6): keine Sprecher-Trennung, Qualität modellbedingt** — Whisper
+  liefert durchlaufenden Text ohne „wer hat was gesagt" (Diarisierung wäre deutlich mehr
+  Aufwand). `whisper-base`/q8 ist ein Kompromiss aus Download-Größe und Güte; für ein
+  gegenzulesendes Protokoll gedacht, nicht als wörtliches Amtsprotokoll. Erst-Download
+  ~80 MB + spürbare Rechenlast (auf schwachen Geräten/iOS-Safari ggf. zu wenig Speicher);
+  darum bewusst **nachträglich** statt live.
 - **Token-TTL 6h ohne Refresh-Logik** — für eine einzelne Versammlung/Absprache
   reichlich; eine Sitzung, die länger als 6h ohne Neuladen der Seite läuft, würde neu
   verbinden müssen (kein bekannter Anwendungsfall bisher).
@@ -109,6 +115,34 @@ kein sauberes LiveKit-Unpublish-Event. Fix in zwei Teilen (`app.js`):
 `setScreenShareEnabled(false)`; `startStageWatchdog()`/`isTrackAlive()` prüft auf der
 zuschauenden Seite alle 3s den `readyState` des gezeigten Tracks und räumt selbst auf,
 falls das Unpublish-Event trotzdem ausbleibt.
+
+## Transkription (lokal, nachträglich — seit 1.6)
+
+Eine Aufnahme lässt sich zusätzlich in ein Text-Transkript umwandeln. Wie die Aufnahme
+läuft das **komplett clientseitig, ohne Server/Egress und ohne Worker-Redeploy** —
+`admin-worker.js` ist unberührt.
+
+- **Auslösung:** Moderator-Toggle `btn-transcribe` (Zustand `wantTranscript`, nur sichtbar
+  für Bearbeiter + wenn `transcribeSupported`). Ist er beim Stoppen aktiv, transkribiert
+  `finishRecordingDownload` die gerade fertige Aufnahme automatisch. Der Blob wird in
+  `lastRecordingBlob` gehalten, sodass der Toggle auch **nach** dem Stoppen noch die letzte
+  Aufnahme transkribieren kann (`toggleTranscribeWish`).
+- **Warum der Aufnahme-Blob der richtige Input ist:** Er enthält bereits den Web-Audio-Mix
+  **aller** Teilnehmerstimmen (`recDest`, siehe Aufnahme) — anders als die Browser-eigene
+  Web Speech API, die nur das lokale Mikrofon hört. Deshalb wird bewusst der fertige Blob
+  transkribiert, nicht ein Live-Mikrofonstrom.
+- **Pipeline:** `decodeTo16kMono` dekodiert den Blob und rendert ihn per
+  `OfflineAudioContext` auf 16 kHz Mono (robust, auch wenn `decodeAudioData` die
+  Ziel-Samplerate ignoriert). Dann Whisper via **transformers.js** (`@huggingface/transformers@3`,
+  Modell `Xenova/whisper-base`, `dtype:"q8"` ⇒ ~80 MB statt ~290 MB fp32, Sprache Deutsch,
+  `return_timestamps`). Ergebnis: `.txt` (mit `[mm:ss]`-Zeitmarken, `buildTranscriptTxt`) +
+  `.vtt` (Untertitel, `buildTranscriptVtt`), beide per `downloadBlob` heruntergeladen.
+- **Externe Herkunft:** Die Lib kommt von **jsDelivr** (dieselbe CDN wie `livekit-client`
+  in `index.html` — Muster etabliert), die Modellgewichte einmalig von **huggingface.co**
+  (`env.remoteHost`-Default), danach Browser-Cache. Kein CSP-Riegel auf GitHub Pages. Nur
+  die Gewichte werden geladen — es wird **kein Audio hochgeladen**.
+- **Fortschritt:** persistentes `#transcribe-status`-Banner (fixed über der Steuerleiste),
+  weil `flashStatus` nach 4 s verschwindet und der Modell-Download/die Inferenz länger dauern.
 
 ## Deploy / Registrierung
 
