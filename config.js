@@ -1,4 +1,4 @@
-const APP_VERSION = "1.6";
+const APP_VERSION = "1.7";
 
 // Fester Hauptraum. Die Besprechung kennt bewusst nur EINEN Raum. Mehrere
 // „Kanäle" ließen sich später ergänzen, indem man hier mehrere Räume anbietet
@@ -8,6 +8,17 @@ const ROOM_NAME = "besprechung";
 const ROOM_LABEL = "Besprechung";
 
 const APP_CHANGELOG = [
+  {
+    version: "1.7",
+    groups: [
+      {
+        title: "Beitreten",
+        items: [
+          "„Stummgeschaltet beitreten“ ist in der Lobby jetzt standardmäßig angehakt — du kommst leiser in den Raum und schaltest dein Mikrofon per Klick frei, wenn du sprechen möchtest."
+        ]
+      }
+    ]
+  },
   {
     version: "1.6",
     groups: [
