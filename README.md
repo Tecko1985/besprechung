@@ -1,4 +1,4 @@
-# Besprechung (v1.1)
+# Besprechung (v1.0)
 
 Digitaler Treffpunkt für Trainer: Sprachraum direkt im Browser, inklusive Bildschirm
 teilen — Teil der [Tools-Übersicht](https://tecko1985.github.io/ToolsUebersicht/) des
