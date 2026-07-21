@@ -70,6 +70,7 @@ const screenSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getD
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+  setupTabs();
   setupVersionBadge();
   setupStaticButtons();
   if (!screenSupported) {
@@ -117,16 +118,26 @@ function setupStaticButtons() {
   window.addEventListener("beforeunload", () => { if (room) { try { room.disconnect(); } catch (_) {} } });
 }
 
+function activateTab(name) {
+  document.querySelectorAll("nav button[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab-section").forEach((s) => s.classList.toggle("active", s.id === "tab-" + name));
+}
+
+function setupTabs() {
+  document.querySelectorAll("nav button[data-tab]").forEach((b) => {
+    b.addEventListener("click", () => activateTab(b.dataset.tab));
+  });
+}
+
 function setupVersionBadge() {
   const badge = $("version-badge");
   badge.textContent = "v" + APP_VERSION;
-  const modal = $("changelog-modal");
-  const open = () => { renderChangelog(); modal.classList.remove("hidden"); };
-  const close = () => modal.classList.add("hidden");
+  const v2 = $("version-badge-2");
+  if (v2) v2.textContent = "v" + APP_VERSION;
+  renderChangelog();
+  const open = () => activateTab("info");
   badge.addEventListener("click", open);
   badge.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
-  $("changelog-close").addEventListener("click", close);
-  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
 }
 
 function renderChangelog() {

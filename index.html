@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>🎙️ Besprechung</title>
 <meta name="theme-color" content="#1a56a0" />
-<link rel="stylesheet" href="style.css?v=1.0" />
+<link rel="stylesheet" href="style.css?v=1.1" />
 </head>
 <body>
 
@@ -33,7 +33,14 @@
       </div>
     </header>
 
+    <nav>
+      <button data-tab="besprechung" class="active">Besprechung</button>
+      <button data-tab="info">Info</button>
+    </nav>
+
     <main>
+
+      <div class="tab-section active" id="tab-besprechung">
 
       <!-- ---------- Lobby (vor dem Betreten) ---------- -->
       <section id="lobby">
@@ -70,6 +77,24 @@
         </div>
         <div class="participant-grid" id="participant-grid"></div>
       </section>
+
+      </div>
+
+      <!-- ---------- Info ---------- -->
+      <div class="tab-section" id="tab-info">
+        <div class="card">
+          <h2>Über die Besprechung <span class="version-badge" id="version-badge-2"></span></h2>
+          <p class="muted">
+            Der digitale Treffpunkt für Trainer: Sprache und Bildschirmfreigabe direkt im
+            Browser, ohne Zusatz-App. Es wird nichts dauerhaft gespeichert — kein Chatverlauf,
+            keine Aufzeichnung auf dem Server.
+          </p>
+        </div>
+        <div class="card">
+          <h2>Änderungen</h2>
+          <div id="changelog-list"></div>
+        </div>
+      </div>
 
     </main>
 
@@ -108,22 +133,9 @@
   <!-- versteckter Sammelpunkt für die Audio-Elemente der anderen -->
   <div id="audio-sink" style="display:none;"></div>
 
-  <!-- ---------- Changelog-Modal ---------- -->
-  <div class="modal-overlay hidden" id="changelog-modal">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Änderungen</h2>
-        <button class="modal-close" id="changelog-close" aria-label="Schließen">×</button>
-      </div>
-      <div class="modal-body">
-        <div id="changelog-list"></div>
-      </div>
-    </div>
-  </div>
-
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
   <script src="config.js?v=1.0"></script>
   <script src="db.js?v=1.0"></script>
-  <script src="app.js?v=1.0"></script>
+  <script src="app.js?v=1.1"></script>
 </body>
 </html>
