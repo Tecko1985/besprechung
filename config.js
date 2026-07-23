@@ -16,7 +16,8 @@ const APP_CHANGELOG = [
         items: [
           "Sprach-Treffpunkt für Trainer: eintreten, reden, zuhören — direkt im Browser, ohne Zusatz-App.",
           "Bildschirm teilen: ein Klick, und dein Monitor erscheint bei allen anderen groß auf der Bühne.",
-          "Zeigt an, wer im Raum ist und wer gerade spricht; skaliert von wenigen Trainern bis zur ganzen hybriden Versammlung."
+          "Zeigt an, wer im Raum ist und wer gerade spricht; skaliert von wenigen Trainern bis zur ganzen hybriden Versammlung.",
+          "Kein „Zurück zum Dashboard“ im Kopfbereich: die Besprechung öffnet sich in einem eigenen Tab, das Dashboard bleibt daneben offen. So kann dich kein Fehlklick mitten aus dem Gespräch oder einer laufenden Aufnahme reißen — zum Beenden gibt es „Verlassen“."
         ]
       },
       {

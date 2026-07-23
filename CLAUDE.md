@@ -80,6 +80,23 @@ durchreicht — die Server-Aktion nimmt den Raumnamen schon entgegen (validiert 
 Regex `^[a-zA-Z0-9_-]{1,100}$`, nicht hart auf den einen Namen verdrahtet), braucht
 für eine Erweiterung also keinen Worker-Redeploy.
 
+## Bewusste Abweichung: kein „Zurück zum Dashboard“ (2026-07-23)
+
+Diese App hat als **einzige** der Flotte KEINEN `back-to-dashboard`-Link im Header —
+die Dashboard-Pille aus dem flottenweiten Header-Button-Redesign wurde hier gezielt
+wieder entfernt. Grund: der Header ist auch während einer laufenden Besprechung
+sichtbar, ein Fehlklick hätte den Nutzer aus dem Raum navigiert und eine laufende
+lokale Aufnahme (die nur im offenen Tab läuft, siehe „Akzeptierte Limitierungen")
+ersatzlos beendet. Ein Weg zurück wird nicht gebraucht: die Kachel in der
+Tools-Übersicht hat `newTab: true`, das Dashboard bleibt also im Nachbartab offen.
+Raus geht es über „Verlassen“ in der Steuerleiste. Der Link auf dem
+**Nicht-angemeldet-Screen** („Zur Tools-Übersicht") bleibt bestehen — dort ist man
+per Definition in keinem Raum.
+
+**Bei einem künftigen Header-/Navigations-Sweep über alle Repos diese App
+auslassen** (oder die Pille bewusst nur außerhalb des Raums einblenden) — nicht
+versehentlich als „fehlt hier noch" nachrüsten.
+
 ## Akzeptierte Limitierungen (nicht erneut melden/fixen)
 
 - **Kein Bildschirm-Teilen auf iOS-Safari** (`getDisplayMedia` fehlt dort
