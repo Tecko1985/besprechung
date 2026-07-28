@@ -9,6 +9,28 @@ const ROOM_LABEL = "Besprechung";
 
 const APP_CHANGELOG = [
   {
+    version: "1.2",
+    groups: [
+      {
+        title: "Chat",
+        items: [
+          "Neuer Knopf 💬 in der Steuerleiste: Chat für alle im Raum — gedacht für alle, die gerade kein Mikrofon haben oder sich lieber schriftlich melden.",
+          "Der Chat klappt rechts auf; der geteilte Bildschirm rückt dabei zur Seite, statt überdeckt zu werden.",
+          "Kommt eine Nachricht, während der Chat zu ist, erscheint eine Vorschau und ein Zähler am Knopf.",
+          "Nachrichten sind flüchtig: Sie bleiben nur während der Besprechung sichtbar und werden nirgends gespeichert. Wer später dazukommt, sieht das bisher Geschriebene nicht."
+        ]
+      },
+      {
+        title: "Wortmeldung",
+        items: [
+          "Neuer Knopf ✋ „Hand heben“: alle sehen, dass du etwas sagen möchtest — auf deiner Kachel und in einer Liste über den Teilnehmern.",
+          "Die Liste zeigt die Reihenfolge der Meldungen, damit niemand übersehen wird.",
+          "Die eigene Meldung nimmst du mit demselben Knopf zurück; Moderatoren können eine erledigte Wortmeldung abhaken."
+        ]
+      }
+    ]
+  },
+  {
     version: "1.1",
     groups: [
       {

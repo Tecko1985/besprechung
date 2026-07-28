@@ -29,6 +29,14 @@ let recCanvasStream = null; // captureStream() des Canvas -> stabiler Video-Trac
 let recSourceVideo = null; // internes <video>, spielt den aktuellen Screenshare-Track (Quelle fürs Canvas)
 let recSourceTrackId = null;
 let recRafId = null;
+// Chat + Wortmeldungen. Beides läuft über LiveKit-Data-Messages (canPublishData
+// steckt schon im Token) — kein Server, kein Worker, nichts wird gespeichert.
+let chatOpen = false;
+let unreadChat = 0;         // ungelesene Nachrichten, solange das Panel zu ist
+let chatToastTimer = null;
+let handRaised = false;     // eigene Hand oben?
+let handRaisedAt = 0;       // Zeitpunkt des Hebens -> Reihenfolge der Meldungen
+const hands = new Map();    // identity -> { ts, name }
 // Transkription (lokal, nachträglich via Whisper/transformers.js — kein Server/Egress)
 let wantTranscript = false;     // Moderator-Toggle: beim Stoppen zusätzlich transkribieren
 let lastRecordingBlob = null;   // letzte fertige Aufnahme (für nachträgliches Transkribieren im Speicher gehalten)
@@ -62,6 +70,15 @@ const recBannerText = $("rec-banner-text");
 const btnTranscribe = $("btn-transcribe");
 const transcribeStatus = $("transcribe-status");
 const transcribeStatusText = $("transcribe-status-text");
+const btnHand = $("btn-hand");
+const handQueue = $("hand-queue");
+const btnChat = $("btn-chat");
+const chatPanel = $("chat-panel");
+const chatLog = $("chat-log");
+const chatForm = $("chat-form");
+const chatInput = $("chat-input");
+const chatBadge = $("chat-badge");
+const chatToast = $("chat-toast");
 
 const screenSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
 
@@ -119,6 +136,12 @@ function setupStaticButtons() {
   btnStageFs.addEventListener("click", toggleStageFullscreen);
   document.addEventListener("fullscreenchange", updateStageFullscreenUI);
   document.addEventListener("webkitfullscreenchange", updateStageFullscreenUI);
+  btnHand.addEventListener("click", toggleOwnHand);
+  btnChat.addEventListener("click", toggleChat);
+  $("btn-chat-close").addEventListener("click", closeChat);
+  chatForm.addEventListener("submit", onChatSubmit);
+  chatToast.addEventListener("click", openChat);
+  window.addEventListener("resize", updateChatOffset);
   window.addEventListener("beforeunload", () => { if (room) { try { room.disconnect(); } catch (_) {} } });
 }
 
@@ -221,6 +244,8 @@ function enterRoomUI() {
   lobby.classList.add("hidden");
   roomView.classList.remove("hidden");
   controls.classList.remove("hidden");
+  resetChatAndHands();
+  updateChatOffset();
   updateControls();
   updateAudioUnlock();
   updateRecordingUI();
@@ -238,6 +263,7 @@ function onLeft() {
   room = null;
   speaking.clear();
   clearStage();
+  resetChatAndHands();
   grid.innerHTML = "";
   audioSink.innerHTML = "";
   lobby.classList.remove("hidden");
@@ -322,6 +348,18 @@ function tileFor(p) {
   mic.textContent = micOn ? "🎙️" : "🔇";
   mic.title = micOn ? "Mikrofon an" : "Stummgeschaltet";
   tile.appendChild(mic);
+
+  if (hands.has(p.identity)) {
+    const hand = document.createElement("div");
+    hand.className = "tile-hand";
+    hand.title = "hat sich gemeldet";
+    hand.appendChild(document.createTextNode("✋"));
+    const nr = document.createElement("span");
+    nr.className = "hand-nr";
+    nr.textContent = String(handPosition(p.identity));
+    hand.appendChild(nr);
+    tile.appendChild(hand);
+  }
 
   const avatar = document.createElement("div");
   avatar.className = "tile-avatar";
@@ -513,6 +551,224 @@ function updateStageFullscreenUI() {
   btnStageFs.textContent = on ? "⤡" : "⛶";
   btnStageFs.title = on ? "Vollbild beenden (Esc)" : "Vollbild";
   btnStageFs.setAttribute("aria-label", btnStageFs.title);
+}
+
+// ------------------------------------------------------------------
+// Wortmeldungen (Hand heben)
+// ------------------------------------------------------------------
+// Läuft wie das Aufnahme-Banner über LiveKit-Data-Messages: kein Server, kein
+// gespeicherter Zustand. Die Reihenfolge steckt im Zeitstempel des Hebens.
+function publishJson(obj) {
+  if (!room) return;
+  try {
+    room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(obj)), { reliable: true });
+  } catch (_) {}
+}
+
+function handOrder() {
+  return [...hands.entries()]
+    .sort((a, b) => (a[1].ts - b[1].ts) || String(a[1].name).localeCompare(String(b[1].name)))
+    .map(([identity, info], i) => ({ identity: identity, name: info.name, nr: i + 1 }));
+}
+
+function handPosition(identity) {
+  const found = handOrder().find((h) => h.identity === identity);
+  return found ? found.nr : 0;
+}
+
+function toggleOwnHand() {
+  if (!room) return;
+  setOwnHand(!handRaised);
+}
+
+function setOwnHand(raised) {
+  if (!room) return;
+  handRaised = !!raised;
+  handRaisedAt = handRaised ? Date.now() : 0;
+  const id = room.localParticipant.identity;
+  if (handRaised) hands.set(id, { ts: handRaisedAt, name: displayName(me) });
+  else hands.delete(id);
+  publishJson({ t: "hand", raised: handRaised, ts: handRaisedAt });
+  updateHandButton();
+  renderHands();
+}
+
+function updateHandButton() {
+  btnHand.classList.toggle("active", handRaised);
+  $("hand-label").textContent = handRaised ? "Hand senken" : "Hand heben";
+}
+
+// Moderatoren dürfen fremde Meldungen abhaken, nachdem jemand dran war. Das ist
+// bewusst nur eine Data-Message (wie das Aufnahme-Banner) -- serverseitig
+// erzwungen sind weiterhin nur Stummschalten und Entfernen.
+function lowerHandOf(identity) {
+  hands.delete(identity);
+  publishJson({ t: "hand-lower", target: identity });
+  renderHands();
+}
+
+function renderHands() {
+  const order = handOrder();
+  handQueue.innerHTML = "";
+  if (!order.length) {
+    handQueue.classList.add("hidden");
+    renderParticipants();
+    return;
+  }
+  const title = document.createElement("span");
+  title.className = "hand-queue-title";
+  title.textContent = order.length === 1 ? "✋ Wortmeldung:" : "✋ Wortmeldungen:";
+  handQueue.appendChild(title);
+  order.forEach((h) => {
+    const chip = document.createElement("span");
+    chip.className = "hand-chip";
+    const nr = document.createElement("span");
+    nr.className = "hand-nr";
+    nr.textContent = h.nr + ".";
+    chip.appendChild(nr);
+    chip.appendChild(document.createTextNode(h.name));
+    const selbst = !!room && h.identity === room.localParticipant.identity;
+    if (isModerator || selbst) {
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "hand-chip-lower";
+      x.textContent = "✕";
+      x.title = selbst ? "Eigene Wortmeldung zurückziehen" : "Wortmeldung erledigt";
+      x.addEventListener("click", () => (selbst ? setOwnHand(false) : lowerHandOf(h.identity)));
+      chip.appendChild(x);
+    }
+    handQueue.appendChild(chip);
+  });
+  handQueue.classList.remove("hidden");
+  renderParticipants();
+}
+
+// ------------------------------------------------------------------
+// Chat (flüchtig -- gedacht für alle, die gerade kein Mikrofon haben)
+// ------------------------------------------------------------------
+function toggleChat() { if (chatOpen) closeChat(); else openChat(); }
+
+function openChat() {
+  chatOpen = true;
+  document.body.classList.add("chat-open");
+  chatPanel.classList.remove("hidden");
+  hideChatToast();
+  unreadChat = 0;
+  updateChatBadge();
+  updateChatOffset();
+  scrollChatToEnd();
+  try { chatInput.focus(); } catch (_) {}
+}
+
+function closeChat() {
+  chatOpen = false;
+  document.body.classList.remove("chat-open");
+  chatPanel.classList.add("hidden");
+}
+
+function onChatSubmit(e) {
+  e.preventDefault();
+  const text = chatInput.value.trim().slice(0, 500);
+  if (!text || !room) return;
+  publishJson({ t: "chat", text: text });
+  appendChatMessage(displayName(me), text, true); // die eigene Nachricht kommt nicht zurück
+  chatInput.value = "";
+}
+
+function receiveChatMessage(name, text) {
+  const clean = text.slice(0, 500);
+  if (!clean.trim()) return;
+  appendChatMessage(name, clean, false);
+  if (!chatOpen) {
+    unreadChat++;
+    updateChatBadge();
+    showChatToast(name, clean);
+  }
+}
+
+function appendChatMessage(name, text, own) {
+  const platzhalter = chatLog.querySelector(".chat-empty");
+  if (platzhalter) platzhalter.remove();
+
+  const wrap = document.createElement("div");
+  wrap.className = "chat-msg" + (own ? " is-own" : "");
+
+  const head = document.createElement("div");
+  head.className = "chat-msg-head";
+  const who = document.createElement("span");
+  who.textContent = own ? "Du" : name;
+  const when = document.createElement("span");
+  when.textContent = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  head.appendChild(who);
+  head.appendChild(when);
+
+  const body = document.createElement("div");
+  body.className = "chat-msg-text";
+  body.textContent = text; // textContent, nicht innerHTML -- fremder Text darf hier nichts bauen
+
+  wrap.appendChild(head);
+  wrap.appendChild(body);
+  chatLog.appendChild(wrap);
+  scrollChatToEnd();
+}
+
+function scrollChatToEnd() { chatLog.scrollTop = chatLog.scrollHeight; }
+
+function updateChatBadge() {
+  chatBadge.textContent = unreadChat > 9 ? "9+" : String(unreadChat);
+  chatBadge.classList.toggle("hidden", unreadChat === 0);
+}
+
+function showChatToast(name, text) {
+  chatToast.innerHTML = "";
+  const who = document.createElement("span");
+  who.className = "chat-toast-name";
+  who.textContent = name;
+  const body = document.createElement("span");
+  body.textContent = text.length > 120 ? text.slice(0, 120) + " …" : text;
+  chatToast.appendChild(who);
+  chatToast.appendChild(body);
+  chatToast.classList.remove("hidden");
+  if (chatToastTimer) clearTimeout(chatToastTimer);
+  chatToastTimer = setTimeout(hideChatToast, 6000);
+}
+
+function hideChatToast() {
+  if (chatToastTimer) { clearTimeout(chatToastTimer); chatToastTimer = null; }
+  chatToast.classList.add("hidden");
+}
+
+// Header und Steuerleiste brechen je nach Fensterbreite um -- zwischen die
+// beiden muss die Chat-Spalte passen, deshalb wird gemessen statt geraten.
+function updateChatOffset() {
+  const header = document.querySelector("header");
+  const nav = document.querySelector("nav");
+  const oben = (header ? header.getBoundingClientRect().height : 0) + (nav ? nav.getBoundingClientRect().height : 0);
+  const unten = controls.classList.contains("hidden") ? 0 : controls.getBoundingClientRect().height;
+  document.documentElement.style.setProperty("--chat-top", Math.round(oben) + "px");
+  document.documentElement.style.setProperty("--chat-bottom", Math.round(unten) + "px");
+}
+
+function renderChatEmpty() {
+  chatLog.innerHTML = "";
+  const p = document.createElement("p");
+  p.className = "chat-empty";
+  p.textContent = "Noch keine Nachrichten.";
+  chatLog.appendChild(p);
+}
+
+// Beim Betreten und beim Verlassen: nichts aus einer alten Sitzung stehen lassen.
+function resetChatAndHands() {
+  hands.clear();
+  handRaised = false;
+  handRaisedAt = 0;
+  updateHandButton();
+  renderHands();
+  closeChat();
+  renderChatEmpty();
+  unreadChat = 0;
+  updateChatBadge();
+  hideChatToast();
 }
 
 // ------------------------------------------------------------------
@@ -951,10 +1207,33 @@ function broadcastRecording(active) {
 function onDataReceived(payload, participant) {
   try {
     const msg = JSON.parse(new TextDecoder().decode(payload));
-    if (msg && msg.t === "rec") {
+    if (!msg) return;
+    if (msg.t === "rec") {
       remoteRecordingBy = msg.active ? (msg.by || "Jemand") : null;
       remoteRecordingId = msg.active && participant ? participant.identity : null;
       updateRecordingUI();
+    } else if (msg.t === "chat" && participant) {
+      receiveChatMessage(displayNameOf(participant), String(msg.text == null ? "" : msg.text));
+    } else if (msg.t === "hand" && participant) {
+      if (msg.raised) {
+        hands.set(participant.identity, {
+          ts: Number(msg.ts) || Date.now(),
+          name: displayNameOf(participant)
+        });
+      } else {
+        hands.delete(participant.identity);
+      }
+      renderHands();
+    } else if (msg.t === "hand-lower") {
+      // Ein Moderator hat eine Hand gesenkt. Betrifft es die eigene, hier auch
+      // den eigenen Zustand nachziehen, sonst zeigt der Knopf weiter "senken".
+      if (room && msg.target === room.localParticipant.identity) {
+        handRaised = false;
+        handRaisedAt = 0;
+        updateHandButton();
+      }
+      hands.delete(msg.target);
+      renderHands();
     }
   } catch (_) {}
 }
@@ -962,6 +1241,10 @@ function onDataReceived(payload, participant) {
 function onParticipantConnected() {
   renderParticipants();
   if (recorder) broadcastRecording(true); // neu Hinzugekommene über die laufende Aufnahme informieren
+  // Wer neu dazukommt, kennt die bereits erhobenen Hände nicht (Data-Messages
+  // haben keinen Verlauf). Also meldet jeder mit erhobener Hand sich erneut --
+  // mit dem URSPRÜNGLICHEN Zeitstempel, damit die Reihenfolge stimmt.
+  if (handRaised) publishJson({ t: "hand", raised: true, ts: handRaisedAt });
 }
 
 function onParticipantDisconnected(p) {
@@ -970,6 +1253,7 @@ function onParticipantDisconnected(p) {
     remoteRecordingBy = null;
     remoteRecordingId = null;
   }
+  if (p && hands.delete(p.identity)) renderHands();
   renderParticipants();
   updateRecordingUI();
 }
