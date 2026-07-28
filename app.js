@@ -46,6 +46,7 @@ const controls = $("controls");
 const grid = $("participant-grid");
 const stageEl = $("stage");
 const stageLabel = $("stage-label");
+const btnStageFs = $("btn-stage-fullscreen");
 const audioSink = $("audio-sink");
 const btnJoin = $("btn-join");
 const btnMic = $("btn-mic");
@@ -115,6 +116,9 @@ function setupStaticButtons() {
   btnRecord.addEventListener("click", toggleRecording);
   btnTranscribe.addEventListener("click", toggleTranscribeWish);
   btnAudioUnlock.addEventListener("click", unlockAudio);
+  btnStageFs.addEventListener("click", toggleStageFullscreen);
+  document.addEventListener("fullscreenchange", updateStageFullscreenUI);
+  document.addEventListener("webkitfullscreenchange", updateStageFullscreenUI);
   window.addEventListener("beforeunload", () => { if (room) { try { room.disconnect(); } catch (_) {} } });
 }
 
@@ -423,6 +427,10 @@ function renderStage() {
   stageEl.insertBefore(video, stageLabel);
   stageLabel.textContent = "🖥️ Bildschirm von " + share.name;
   stageEl.classList.remove("hidden");
+  // Geteilter Bildschirm ist jetzt das Wichtigste auf der Seite: Bühne raus aus
+  // der schmalen Spalte, Teilnehmer-Kacheln treten zurück (Styles in style.css).
+  stageEl.classList.add("stage-wide");
+  grid.classList.add("compact");
   stageTrack = share.track;
   stageSid = share.pub.trackSid;
   startStageWatchdog();
@@ -453,12 +461,58 @@ function stopStageWatchdog() {
 
 function clearStage() {
   stopStageWatchdog();
+  // Läuft gerade Vollbild auf der Bühne, muss es hier enden -- sonst starrt der
+  // Zuschauer nach dem Ende der Freigabe auf eine schwarze Vollbildfläche, aus
+  // der er sich erst per Esc befreien muss.
+  if (fullscreenElement() === stageEl) exitStageFullscreen();
   if (stageTrack) { try { stageTrack.detach().forEach((el) => el.remove()); } catch (_) {} }
   stageEl.querySelectorAll("video").forEach((v) => v.remove());
   stageEl.classList.add("hidden");
+  stageEl.classList.remove("stage-wide");
+  grid.classList.remove("compact");
   stageLabel.textContent = "";
   stageTrack = null;
   stageSid = null;
+}
+
+// ------------------------------------------------------------------
+// Vollbild der Bühne
+// ------------------------------------------------------------------
+// Größer wird die Bühne schon von selbst, sobald jemand teilt (.stage-wide).
+// Dieser Knopf geht den Schritt weiter ins echte Browser-Vollbild. iOS-Safari
+// kennt die Fullscreen-API auf normalen Elementen nicht -- dort kann nur das
+// <video> selbst per webkitEnterFullscreen, deshalb der Fallback.
+function fullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function toggleStageFullscreen() {
+  if (fullscreenElement()) { exitStageFullscreen(); return; }
+  const req = stageEl.requestFullscreen || stageEl.webkitRequestFullscreen;
+  if (req) {
+    try {
+      Promise.resolve(req.call(stageEl)).catch(() => flashStatus("Vollbild wurde vom Browser abgelehnt", "is-error"));
+      return;
+    } catch (_) { /* unten weiterprobieren */ }
+  }
+  const video = stageEl.querySelector("video");
+  if (video && video.webkitEnterFullscreen) {
+    try { video.webkitEnterFullscreen(); return; } catch (_) {}
+  }
+  flashStatus("Vollbild wird auf diesem Gerät nicht unterstützt", "is-error");
+}
+
+function exitStageFullscreen() {
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  if (!exit) return;
+  try { Promise.resolve(exit.call(document)).catch(() => {}); } catch (_) {}
+}
+
+function updateStageFullscreenUI() {
+  const on = fullscreenElement() === stageEl;
+  btnStageFs.textContent = on ? "⤡" : "⛶";
+  btnStageFs.title = on ? "Vollbild beenden (Esc)" : "Vollbild";
+  btnStageFs.setAttribute("aria-label", btnStageFs.title);
 }
 
 // ------------------------------------------------------------------

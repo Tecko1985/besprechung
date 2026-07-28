@@ -9,6 +9,20 @@ const ROOM_LABEL = "Besprechung";
 
 const APP_CHANGELOG = [
   {
+    version: "1.1",
+    groups: [
+      {
+        title: "Geteilter Bildschirm",
+        items: [
+          "Teilt jemand seinen Bildschirm, wird die Bühne automatisch groß: sie nutzt jetzt die volle Fensterbreite und -höhe statt nur der schmalen Spalte in der Mitte.",
+          "Neuer Knopf ⛶ oben rechts auf der Bühne für echtes Vollbild — beenden mit demselben Knopf oder mit Esc.",
+          "Während geteilt wird, rücken die Teilnehmer-Kacheln zusammen und werden kleiner, damit der Bildschirm den Platz bekommt. Wer gerade spricht, bleibt weiterhin am grünen Rahmen erkennbar.",
+          "Endet die Freigabe, während das Vollbild läuft, schließt sich das Vollbild von selbst."
+        ]
+      }
+    ]
+  },
+  {
     version: "1.0",
     groups: [
       {

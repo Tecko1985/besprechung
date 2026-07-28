@@ -120,6 +120,36 @@ button.btn:disabled { opacity: 0.55; cursor: default; }
   pointer-events: none;
 }
 
+/* Sobald wirklich jemand teilt, bricht die Bühne aus der 960-px-Spalte aus
+   (app.js setzt .stage-wide). Die Breite ist dreifach gedeckelt: Fensterbreite,
+   die Höhe des sichtbaren Bereichs (Header oben, Steuerleiste unten) und ein
+   Maximum für sehr breite Monitore — so bleibt 16:9 erhalten, ohne dass die
+   Bühne unten aus dem Bild läuft. Das abschließende max(…, 100%) sorgt dafür,
+   dass sie nie SCHMALER wird als bisher (z. B. Handy im Querformat, wo die
+   Höhenrechnung sonst gewinnen würde). */
+.stage.stage-wide {
+  width: max(min(calc(100vw - 40px), calc((100vh - 270px) * 16 / 9), 1700px), 100%);
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+.stage-fs-btn {
+  position: absolute; right: 12px; top: 12px; z-index: 2;
+  background: rgba(0, 0, 0, 0.55); color: white;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  font-size: 16px; line-height: 1;
+  padding: 7px 10px; cursor: pointer;
+}
+.stage-fs-btn:hover { background: rgba(0, 0, 0, 0.78); }
+.stage-fs-btn:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+
+/* Echtes Browser-Vollbild: alle Layout-Deckel fallen weg. Die beiden Selektoren
+   MÜSSEN getrennt stehen — ein Browser, der einen davon nicht kennt, verwirft
+   sonst die ganze Regel. */
+.stage:fullscreen { width: 100vw; height: 100vh; max-width: none; margin: 0; transform: none; border-radius: 0; aspect-ratio: auto; }
+.stage:-webkit-full-screen { width: 100vw; height: 100vh; max-width: none; margin: 0; transform: none; border-radius: 0; aspect-ratio: auto; }
+
 .room-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .room-count { font-size: 14px; font-weight: 600; color: var(--muted); }
 
@@ -143,6 +173,18 @@ button.btn:disabled { opacity: 0.55; cursor: default; }
   border-color: var(--green);
   box-shadow: 0 0 0 3px rgba(45, 140, 78, 0.22), var(--shadow);
 }
+
+/* Solange ein Bildschirm geteilt wird, treten die Teilnehmer-Kacheln zurück:
+   schmalere Spalten, kleinere Avatare. Wer spricht, bleibt erkennbar (grüner
+   Rahmen), und die Moderationsknöpfe bleiben bedienbar. */
+.participant-grid.compact { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.participant-grid.compact .tile { padding: 10px 8px 8px; gap: 6px; }
+.participant-grid.compact .tile-avatar { width: 38px; height: 38px; font-size: 15px; }
+.participant-grid.compact .tile-name { font-size: 12px; }
+.participant-grid.compact .tile-sharing { font-size: 10px; }
+.participant-grid.compact .tile-mic { top: 6px; right: 7px; font-size: 12px; }
+.participant-grid.compact .tile-mod { margin-top: 3px; gap: 4px; }
+.participant-grid.compact .tile-mod-btn { font-size: 10px; padding: 2px 6px; }
 .tile-avatar {
   width: 64px; height: 64px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
