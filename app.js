@@ -157,14 +157,9 @@ function setupTabs() {
 }
 
 function setupVersionBadge() {
-  const badge = $("version-badge");
-  badge.textContent = "v" + APP_VERSION;
   const v2 = $("version-badge-2");
   if (v2) v2.textContent = "v" + APP_VERSION;
   renderChangelog();
-  const open = () => activateTab("info");
-  badge.addEventListener("click", open);
-  badge.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
 }
 
 function renderChangelog() {
