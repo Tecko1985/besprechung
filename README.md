@@ -1,7 +1,7 @@
 # Besprechung (v1.0)
 
 Digitaler Treffpunkt für Trainer: Sprachraum direkt im Browser, inklusive Bildschirm
-teilen — Teil der [Tools-Übersicht](https://tecko1985.github.io/ToolsUebersicht/) des
+teilen — Teil der [Tools-Übersicht](https://sc1911heiligenstadt.github.io/ToolsUebersicht/) des
 1. SC 1911 Heiligenstadt. Gedacht für spontane Absprachen und die hybride
 Trainerversammlung.
 
