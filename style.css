@@ -201,9 +201,21 @@ button.btn:disabled { opacity: 0.55; cursor: default; }
   width: 64px; height: 64px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 24px; font-weight: 700; color: white;
-  background: var(--blue);
   user-select: none;
+  /* ⚠️ background-color statt der Kurzform `background`, und die drei
+     Bild-Eigenschaften einzeln. Die Kurzform setzt position/size/repeat auf ihre
+     Startwerte zurück — ein danach per JS gesetztes backgroundImage läge dann
+     ungeskaliert in der linken oberen Ecke statt den Kreis zu füllen. Genau der
+     Fehler, der die Vorschau in der Tools-Übersicht getroffen hat. */
+  background-color: var(--blue);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  overflow: hidden;
 }
+/* Trägt die Kachel ein echtes Foto, ist der Kreis vollflächig belegt — der
+   Innenschatten hält ihn auch vor hellem Hintergrund als Kreis erkennbar. */
+.tile-avatar.has-foto { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12); }
 .tile.speaking .tile-avatar { box-shadow: 0 0 0 4px rgba(45, 140, 78, 0.25); }
 .tile-name {
   font-size: 14px; font-weight: 600; text-align: center;

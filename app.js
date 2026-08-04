@@ -246,6 +246,9 @@ function enterRoomUI() {
   updateRecordingUI();
   renderParticipants();
   renderStage();
+  // Erst hier, nicht schon in der Lobby: wer die Seite offen liegen lässt, ohne
+  // je beizutreten, soll den Abruf gar nicht auslösen.
+  ladeNutzerfotoVersionen();
 }
 
 function onLeft() {
@@ -261,6 +264,7 @@ function onLeft() {
   resetChatAndHands();
   grid.innerHTML = "";
   audioSink.innerHTML = "";
+  nutzerfotosLeeren();
   lobby.classList.remove("hidden");
   roomView.classList.add("hidden");
   controls.classList.add("hidden");
@@ -358,8 +362,12 @@ function tileFor(p) {
 
   const avatar = document.createElement("div");
   avatar.className = "tile-avatar";
-  avatar.style.background = avatarColor(p.identity);
+  // ⚠️ backgroundColor, NICHT die Kurzform background: avatarFotoAnwenden() setzt
+  // gleich darauf backgroundImage. Die Kurzform würde das Bild wieder wegräumen.
+  avatar.style.backgroundColor = avatarColor(p.identity);
   avatar.textContent = initials(name);
+  // Ersetzt die Initialen durch das Konto-Foto, sofern es eines gibt.
+  avatarFotoAnwenden(avatar, p.identity);
   tile.appendChild(avatar);
 
   const nm = document.createElement("div");
@@ -1235,6 +1243,9 @@ function onDataReceived(payload, participant) {
 
 function onParticipantConnected() {
   renderParticipants();
+  // Wer nach dem Betreten dazukommt, steht noch nicht in den geladenen
+  // Foto-Ständen — sonst bliebe er als Einziger bei seinen Initialen.
+  fotoVersionenNachziehen();
   if (recorder) broadcastRecording(true); // neu Hinzugekommene über die laufende Aufnahme informieren
   // Wer neu dazukommt, kennt die bereits erhobenen Hände nicht (Data-Messages
   // haben keinen Verlauf). Also meldet jeder mit erhobener Hand sich erneut --
@@ -1294,6 +1305,105 @@ function initials(name) {
   const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
   return (first + last).toUpperCase();
 }
+// ------------------------------------------------------------------
+// Nutzerfotos auf den Kacheln (seit 2026-08-04)
+// ------------------------------------------------------------------
+//
+// Zeigt das Bild, das jeder in der Tools-Übersicht unter "Mein Foto" hinterlegt
+// hat. Der Join läuft über die LiveKit-Identity — die IST der Gateway-Username
+// (handleLivekitToken setzt sie so). Wer kein Bild hat, behält seine Initialen.
+//
+// ⚠️ Case-insensitiv verglichen: das Gateway liefert Namen mal groß, mal klein.
+// Gleiche Vorsichtsmaßnahme wie myPlayerId() im Kadermanager.
+let nutzerfotoVersionen = {};
+
+// "<nutzername>@<version>" -> Objekt-URL. Die Version MUSS im Schlüssel stehen:
+// sonst bliebe nach dem Hinterlegen eines neuen Bildes das alte im Cache hängen.
+const nutzerfotoBlobs = new Map();
+
+// Läuft gerade ein Abruf für diesen Schlüssel? Ohne das startet jedes
+// renderParticipants() einen neuen — und die Funktion läuft bei jedem
+// Stummschalten, jeder Wortmeldung und jeder Chatnachricht erneut.
+const nutzerfotoLaeuft = new Set();
+
+let fotoNachladeTimer = null;
+
+function fotoVersionFuer(identity) {
+  if (!identity) return null;
+  const gesucht = String(identity).toLowerCase();
+  for (const name in nutzerfotoVersionen) {
+    if (name.toLowerCase() === gesucht) return nutzerfotoVersionen[name] || null;
+  }
+  return null;
+}
+
+// Best effort: antwortet der Worker nicht, bleibt es bei den Initialen. Ein
+// fehlendes Bild darf eine laufende Besprechung nie stören.
+async function ladeNutzerfotoVersionen() {
+  try {
+    nutzerfotoVersionen = await fetchNutzerfotoVersionen();
+    renderParticipants();
+  } catch (_) { /* Initialen bleiben */ }
+}
+
+// Neuzugänge sammeln und in EINEM Aufruf nachziehen. Bei einer Trainerversammlung
+// treten schnell hintereinander viele Leute ein — ein Aufruf je Person wäre eine
+// Anfragenflut für eine Auskunft, die ohnehin alle Konten auf einmal liefert.
+function fotoVersionenNachziehen() {
+  if (fotoNachladeTimer) return;
+  fotoNachladeTimer = setTimeout(() => {
+    fotoNachladeTimer = null;
+    if (room) ladeNutzerfotoVersionen();
+  }, 1500);
+}
+
+// Setzt das Bild auf einen fertig gebauten Avatar. Der Aufrufer hat die Initialen
+// schon gesetzt — bleibt es dabei, ist nichts verloren.
+function avatarFotoAnwenden(avatar, identity) {
+  const version = fotoVersionFuer(identity);
+  if (!version) return;
+  const schluessel = identity + "@" + version;
+  avatar.dataset.fotoFor = schluessel;
+
+  const fertig = nutzerfotoBlobs.get(schluessel);
+  if (fertig) { avatarBildSetzen(avatar, fertig); return; }
+  if (nutzerfotoLaeuft.has(schluessel)) return;
+
+  nutzerfotoLaeuft.add(schluessel);
+  gatewayFetchNutzerfoto(identity)
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      nutzerfotoBlobs.set(schluessel, url);
+      // ⚠️ Nach dem await ist die Kachel meist eine ANDERE: renderParticipants()
+      // baut das Raster bei jedem Ereignis komplett neu auf. Deshalb über den
+      // Schlüssel neu suchen statt das alte Element festzuhalten. Bewusst per
+      // Vergleich statt Attribut-Selektor + CSS.escape — das gibt es auf den
+      // älteren iOS-Geräten der Flotte nicht überall, und es sind nie mehr als
+      // eine Handvoll Kacheln.
+      document.querySelectorAll(".tile-avatar").forEach((el) => {
+        if (el.dataset.fotoFor === schluessel) avatarBildSetzen(el, url);
+      });
+    })
+    .catch(() => { /* Initialen bleiben stehen */ })
+    .finally(() => nutzerfotoLaeuft.delete(schluessel));
+}
+
+function avatarBildSetzen(avatar, url) {
+  avatar.textContent = "";
+  avatar.classList.add("has-foto");
+  avatar.style.backgroundImage = 'url("' + url + '")';
+}
+
+// Beim Verlassen aufräumen: eine Objekt-URL bleibt sonst gültig, solange der Tab
+// offen ist — auch für den Nächsten, der sich an diesem Gerät anmeldet.
+function nutzerfotosLeeren() {
+  nutzerfotoBlobs.forEach((url) => URL.revokeObjectURL(url));
+  nutzerfotoBlobs.clear();
+  nutzerfotoLaeuft.clear();
+  nutzerfotoVersionen = {};
+  if (fotoNachladeTimer) { clearTimeout(fotoNachladeTimer); fotoNachladeTimer = null; }
+}
+
 const AVATAR_COLORS = ["#1a56a0", "#2d8c4e", "#c9941f", "#8e44ad", "#c0392b", "#16a085", "#d35400", "#2c3e50"];
 function avatarColor(id) {
   let h = 0;

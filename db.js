@@ -54,6 +54,38 @@ async function fetchLivekitToken(room) {
   return gatewayRequest({ action: "livekit-token", app: GATEWAY_APP_ID, room });
 }
 
+// ---------- Nutzerfotos aus "Mein Konto" ----------
+//
+// Die Kacheln zeigen das Bild, das jeder in der Tools-Übersicht unter "Mein Foto"
+// hinterlegt hat. Beides sind bestehende Gateway-Aktionen — hier ist KEIN
+// Worker-Redeploy nötig, die Besprechung bleibt weiterhin zustandslos.
+//
+// ⚠️ Bewusst NICHT über dav-file-get: das Foto gehört zum Konto, nicht zu dieser
+// App. Gleiche Begründung wie im Kadermanager (E:\kadermanager\db.js).
+
+// Alle Foto-Stände in EINEM Aufruf: {username: fotoVersion}. Liest im Worker nur
+// nutzer.json, keine einzige Bilddatei — deshalb billig genug, um ihn beim
+// Betreten und bei Neuzugängen zu wiederholen.
+async function fetchNutzerfotoVersionen() {
+  const body = await gatewayRequest({ action: "nutzerfoto-versionen" });
+  return (body && body.versionen && typeof body.versionen === "object") ? body.versionen : {};
+}
+
+// Ein einzelnes Bild. Der Abruf verlangt den Token, ein schlichtes <img src="…">
+// geht deshalb nicht — die Bytes müssen geholt und als Objekt-URL eingehängt werden.
+async function gatewayFetchNutzerfoto(username) {
+  const token = getSessionToken();
+  if (!token) throw new NotLoggedInError();
+  const resp = await fetch(GATEWAY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ action: "nutzerfoto-get", username })
+  });
+  if (resp.status === 401) throw new NotLoggedInError("Sitzung abgelaufen");
+  if (!resp.ok) throw new Error("Foto nicht abrufbar (HTTP " + resp.status + ")");
+  return resp.blob();
+}
+
 // Moderations-Aktionen (nur Bearbeiter). Der Worker prüft die Berechtigung
 // (resolveEditPermission) und führt den eigentlichen LiveKit-Server-Befehl
 // aus — der Client stößt ihn nur an.

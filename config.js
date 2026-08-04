@@ -9,6 +9,19 @@ const ROOM_LABEL = "Besprechung";
 
 const APP_CHANGELOG = [
   {
+    version: "1.1",
+    groups: [
+      {
+        title: "Foto auf der Teilnehmerkachel",
+        items: [
+          "Wer in der Tools-Übersicht unter „Mein Konto“ ein Foto hinterlegt hat, wird hier damit angezeigt — an derselben Stelle, an der bisher nur die Initialen standen.",
+          "Ohne hinterlegtes Bild bleibt alles wie gewohnt bei den Initialen in der gewohnten Farbe. Es muss also niemand etwas tun.",
+          "Das Bild pflegt jeder selbst in der Tools-Übersicht unter „Mein Konto“ → „Mein Foto“. Eine Änderung dort ist beim nächsten Betreten der Besprechung zu sehen."
+        ]
+      }
+    ]
+  },
+  {
     version: "1.0",
     groups: [
       {
