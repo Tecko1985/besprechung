@@ -9,19 +9,6 @@ const ROOM_LABEL = "Besprechung";
 
 const APP_CHANGELOG = [
   {
-    version: "1.1",
-    groups: [
-      {
-        title: "Foto auf der Teilnehmerkachel",
-        items: [
-          "Wer in der Tools-Übersicht unter „Mein Konto“ ein Foto hinterlegt hat, wird hier damit angezeigt — an derselben Stelle, an der bisher nur die Initialen standen.",
-          "Ohne hinterlegtes Bild bleibt alles wie gewohnt bei den Initialen in der gewohnten Farbe. Es muss also niemand etwas tun.",
-          "Das Bild pflegt jeder selbst in der Tools-Übersicht unter „Mein Konto“ → „Mein Foto“. Eine Änderung dort ist beim nächsten Betreten der Besprechung zu sehen."
-        ]
-      }
-    ]
-  },
-  {
     version: "1.0",
     groups: [
       {
@@ -31,6 +18,14 @@ const APP_CHANGELOG = [
           "Zeigt an, wer im Raum ist und wer gerade spricht. Trägt von wenigen Trainern bis zur ganzen hybriden Versammlung.",
           "In der Lobby ist „Stummgeschaltet beitreten“ vorausgewählt — man kommt leise in den Raum und schaltet das Mikrofon frei, wenn man sprechen will.",
           "Im Kopfbereich gibt es bewusst kein „Zurück zum Dashboard“: die Besprechung öffnet sich in einem eigenen Tab, das Dashboard bleibt daneben stehen. So reißt kein Fehlklick jemanden mitten aus dem Gespräch oder einer laufenden Aufnahme. Zum Beenden gibt es „Verlassen“."
+        ]
+      },
+      {
+        title: "Foto auf der Teilnehmerkachel",
+        items: [
+          "Wer in der Tools-Übersicht unter „Mein Konto“ ein Foto hinterlegt hat, wird hier damit angezeigt — an der Stelle, an der sonst die Initialen stehen.",
+          "Ohne hinterlegtes Bild bleibt es bei den Initialen in der gewohnten Farbe. Es muss also niemand etwas tun.",
+          "Das Bild pflegt jeder selbst in der Tools-Übersicht unter „Mein Konto“ → „Mein Foto“. Eine Änderung dort ist beim nächsten Betreten der Besprechung zu sehen."
         ]
       },
       {
