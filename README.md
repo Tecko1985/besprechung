@@ -1,41 +1,23 @@
-# Besprechung (v1.0)
+# 🎙️ Besprechung
 
-Digitaler Treffpunkt für Trainer: Sprachraum direkt im Browser, inklusive Bildschirm
-teilen — Teil der [Tools-Übersicht](https://sc1911heiligenstadt.github.io/ToolsUebersicht/) des
-1. SC 1911 Heiligenstadt. Gedacht für spontane Absprachen und die hybride
-Trainerversammlung.
+Digitaler Treffpunkt für Trainer: Sprachraum direkt im Browser, inklusive Bildschirm teilen — z. B. für die hybride Trainerversammlung.
 
-**Ein Klick auf „Raum betreten"** — kein Zusatz-Account, keine App-Installation. Wer
-Zugriff auf dieses Tool hat, betritt denselben Raum, sieht alle anderen Teilnehmer als
-Kachel und hört sie. Wer gerade spricht, wird sichtbar hervorgehoben. Ein Klick teilt
-den eigenen Bildschirm — er erscheint bei allen anderen groß auf der Bühne.
+**➡️ [Besprechung öffnen](https://sc1911heiligenstadt.github.io/besprechung/)**
 
-## Bedienung
+## Zugang
 
-- **Raum betreten** — fragt beim ersten Mal nach Mikrofon-Zugriff. „Stummgeschaltet
-  beitreten" lässt sich vorab ankreuzen.
-- **Mikro an/stumm**, **Bildschirm teilen/beenden**, **Verlassen** — feste Steuerleiste
-  am unteren Bildschirmrand, solange man im Raum ist.
-- Wer spricht, bekommt einen grünen Rahmen um die eigene Kachel (automatisch, ohne
-  Zutun).
+Die Anmeldung läuft über die [Tools-Übersicht](https://sc1911heiligenstadt.github.io/ToolsUebersicht/) — dort einmal anmelden, danach ist dieses Werkzeug offen.
 
-## Bekannte Grenzen
+Die Rechte gelten in drei Stufen: **Sehen** (nur ansehen), **Bearbeiten** (Einträge pflegen) und **Administrieren** (Einstellungen und Verwaltung). Wer welche Stufe hat, legt die Tools-Übersicht fest.
 
-- **Bildschirm teilen funktioniert nicht auf iPhone/iPad im Browser**
-  (`getDisplayMedia` fehlt dort systembedingt) — Mikro/Zuhören funktioniert auf allen
-  Geräten.
-- Bildschirm teilen vom **Handy** aus ist grundsätzlich möglich, aber gerätabhängig
-  unzuverlässig (Sperrbildschirm/Tab-Wechsel kann die Freigabe abrupt beenden). Für
-  eine hybride Versammlung: wer teilen will, sitzt am Laptop/Desktop.
+## Lokal starten
+
+Über den Eintrag `besprechung` in `E:\.claude\launch.json` — der Server läuft dann auf `http://localhost:8788/`.
 
 ## Technik
 
-Vanilla-JS-App (kein Build-Step), Medienübertragung läuft über [LiveKit
-Cloud](https://livekit.io/) (gemieteter SFU-Medienserver — verteilt Audio/Video, ohne
-dass jeder Teilnehmer direkt an jeden anderen senden muss). Anmeldung läuft über das
-zentrale ToolsUebersicht-Login-Gateway (`admin-worker.js`), das jedem berechtigten
-Trainer ein kurzlebiges LiveKit-Zugangstoken ausstellt. Die Besprechung selbst
-speichert **nichts** dauerhaft (kein Nextcloud-Dokument, keine Chatverläufe,
-keine Aufzeichnung).
+Vanilla JavaScript ohne Build-Schritt — die Dateien werden so ausgeliefert, wie sie im Repo liegen. Veröffentlicht über GitHub Pages. Die Daten liegen in der Vereins-Nextcloud; der Zugriff läuft ausschließlich über den Login-Worker der Tools-Übersicht, nie mit Zugangsdaten im Browser.
 
-- `index.html`, `app.js`, `db.js`, `config.js`, `style.css` — die App
+---
+
+Ein Werkzeug des 1. SC 1911 Heiligenstadt. Alle Werkzeuge auf einen Blick: [Tools-Übersicht](https://sc1911heiligenstadt.github.io/ToolsUebersicht/) · Erklärungen im [Toolbox Wiki](https://sc1911heiligenstadt.github.io/Vereinswiki/).
