@@ -16,7 +16,11 @@ Die Rechte gelten in drei Stufen: **Sehen** (nur ansehen), **Bearbeiten** (Eintr
 
 ## Technik
 
-Vanilla JavaScript ohne Build-Schritt — die Dateien werden so ausgeliefert, wie sie im Repo liegen. Veröffentlicht über GitHub Pages. Die Daten liegen in der Vereins-Nextcloud; der Zugriff läuft ausschließlich über den Login-Worker der Tools-Übersicht, nie mit Zugangsdaten im Browser.
+Vanilla JavaScript ohne Build-Schritt — die Dateien werden so ausgeliefert, wie sie im Repo liegen. Veröffentlicht über GitHub Pages.
+
+**Dieses Werkzeug speichert nichts.** Es gibt kein Dokument in der Nextcloud, keine Chatverläufe und keine Aufzeichnung auf einem Server. Die einzige Server-Berührung ist ein kurzlebiger Zugangsschlüssel für den Sprachraum; Ton und Bild laufen danach direkt über den Medien-Dienst. Der Chat ist flüchtig — wer später dazukommt, sieht das bisher Geschriebene nicht.
+
+Eine Aufnahme und das daraus erzeugte Transkript entstehen **auf dem Gerät der aufnehmenden Person** und landen als Datei dort. Es wird kein Ton hochgeladen. Die Aufnahme läuft nur, solange dieser Tab offen bleibt.
 
 ---
 
